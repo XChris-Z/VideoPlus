@@ -42,7 +42,7 @@
     "longDescription": "Aplicación ultrarrápida para descargar videos y audios de múltiples plataformas, desarrollada por XChris-Z.",
     "windows": {
       "nsis": {
-        "installMode": "currentUser",
+        "installMode": "both",
         "displayLanguageSelector": false
       }
     }
