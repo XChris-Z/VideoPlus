@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 import { open } from "@tauri-apps/plugin-dialog";
 import { 
   Download, Settings, ClipboardPaste, 
@@ -23,8 +25,15 @@ function App() {
 
   const [videoInfo, setVideoInfo] = useState<any>(null);
   const [loadingInfo, setLoadingInfo] = useState(false);
+  const [updatingApp, setUpdatingApp] = useState(false);
+  const [updatingEngines, setUpdatingEngines] = useState(false);
 
   useEffect(() => {
+    // Escuchar progreso de descarga de motores
+    const unlistenEngine = listen<any>("engine-download-progress", (event) => {
+      setEngineStatus(`Actualizando yt-dlp... ${event.payload.progress.toFixed(1)}%`);
+    });
+
     // Escuchar progreso del video
     const unlistenVideo = listen<any>("download-progress", (event) => {
       const p = event.payload;
@@ -36,8 +45,12 @@ function App() {
       }
     });
 
-    // Motores locales
-    setEngineStatus("Motor Local: yt-dlp Listo ✅");
+    // Iniciar copia de motores de resources a local app data
+    invoke("check_and_download_engines").then(() => {
+      setEngineStatus("Motor Local: yt-dlp Listo ✅");
+    }).catch(err => {
+      setEngineStatus(`Error de motores: ${err}`);
+    });
 
     // Cargar historial
     invoke("get_history").then((res: any) => {
@@ -46,8 +59,43 @@ function App() {
 
     return () => {
       unlistenVideo.then(f => f());
+      unlistenEngine.then(f => f());
     }
   }, []);
+
+  const handleUpdateApp = async () => {
+    try {
+      setUpdatingApp(true);
+      const update = await check();
+      if (update) {
+        setEngineStatus(`Descargando actualización v${update.version}...`);
+        await update.downloadAndInstall();
+        setEngineStatus("Actualización instalada. Reiniciando...");
+        await relaunch();
+      } else {
+        setEngineStatus("Ya tienes la última versión ✅");
+      }
+    } catch (e) {
+      console.error(e);
+      setEngineStatus(`Error actualizando app: ${e}`);
+    } finally {
+      setUpdatingApp(false);
+    }
+  };
+
+  const handleUpdateEngines = async () => {
+    try {
+      setUpdatingEngines(true);
+      setEngineStatus("Descargando nuevo yt-dlp...");
+      await invoke("update_engines");
+      setEngineStatus("Motor actualizado con éxito ✅");
+    } catch (e) {
+      console.error(e);
+      setEngineStatus(`Error actualizando motor: ${e}`);
+    } finally {
+      setUpdatingEngines(false);
+    }
+  };
 
   const saveToHistory = async () => {
     const newEntry = { url, format, quality, date: new Date().toISOString(), title: videoInfo?.title || url };
@@ -189,9 +237,19 @@ function App() {
               <span className="flex items-center gap-1 text-zinc-300">Facebook y más.</span>
             </div>
           </div>
-          <button onClick={() => setShowHistory(true)} className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg border border-zinc-700 transition-colors font-medium text-sm shadow-sm">
-            Ver Historial
-          </button>
+          <div className="flex flex-col gap-2 items-end">
+            <div className="flex gap-2">
+              <button onClick={handleUpdateEngines} disabled={updatingEngines} className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md transition-colors text-xs shadow-sm disabled:opacity-50 border border-zinc-700">
+                {updatingEngines ? "Actualizando..." : "Actualizar Motor"}
+              </button>
+              <button onClick={handleUpdateApp} disabled={updatingApp} className="flex items-center gap-2 px-3 py-1.5 bg-violet-600/20 hover:bg-violet-600/40 text-violet-300 border border-violet-500/30 rounded-md transition-colors text-xs shadow-sm disabled:opacity-50">
+                {updatingApp ? "Buscando..." : "Actualizar App"}
+              </button>
+            </div>
+            <button onClick={() => setShowHistory(true)} className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg border border-zinc-700 transition-colors font-medium text-sm shadow-sm w-full justify-center">
+              Ver Historial
+            </button>
+          </div>
         </div>
 
         {/* URL Input Section */}

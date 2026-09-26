@@ -1,12 +1,15 @@
 use tauri::{AppHandle, Manager, Emitter};
-use tauri_plugin_shell::ShellExt;
-use tauri_plugin_shell::process::CommandEvent;
+use std::path::PathBuf;
+use tokio::fs::{File, create_dir_all};
+use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
+use std::process::Stdio;
+use tokio::process::Command;
 use futures_util::StreamExt;
 
-#[tauri::command]
-async fn check_and_download_engines(_app: AppHandle) -> Result<(), String> {
-    // Los motores ya están empaquetados localmente con Tauri Sidecars.
-    Ok(())
+#[derive(Clone, serde::Serialize)]
+struct DownloadProgress {
+    engine: String,
+    progress: f64,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -19,11 +22,65 @@ struct VideoProgress {
 }
 
 #[tauri::command]
-async fn get_video_info(app: AppHandle, url: String) -> Result<serde_json::Value, String> {
-    let mut cmd = app.shell().sidecar("yt-dlp").map_err(|e| e.to_string())?;
+async fn check_and_download_engines(app: AppHandle) -> Result<(), String> {
+    let data_dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    if !data_dir.exists() {
+        create_dir_all(&data_dir).await.map_err(|e| e.to_string())?;
+    }
+
+    let yt_target = data_dir.join("yt-dlp.exe");
+    let ffmpeg_target = data_dir.join("ffmpeg.exe");
+
+    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    let yt_src = resource_dir.join("bin").join("yt-dlp.exe");
+    let ffmpeg_src = resource_dir.join("bin").join("ffmpeg.exe");
+
+    if !yt_target.exists() && yt_src.exists() {
+        std::fs::copy(&yt_src, &yt_target).map_err(|e| format!("Error copiando yt-dlp: {}", e))?;
+    }
+    if !ffmpeg_target.exists() && ffmpeg_src.exists() {
+        std::fs::copy(&ffmpeg_src, &ffmpeg_target).map_err(|e| format!("Error copiando ffmpeg: {}", e))?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn update_engines(app: AppHandle) -> Result<(), String> {
+    let data_dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let yt_target = data_dir.join("yt-dlp.exe");
+
+    let client = reqwest::Client::builder().user_agent("VideoPlus/1.0").build().map_err(|e| e.to_string())?;
+    let res = client.get("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe").send().await.map_err(|e| e.to_string())?;
+    let total_size = res.content_length().unwrap_or(0) as f64;
     
-    // Obtener información en JSON
-    let output = cmd.arg("-j")
+    let mut file = File::create(&yt_target).await.map_err(|e| e.to_string())?;
+    let mut stream = res.bytes_stream();
+    let mut downloaded = 0f64;
+    
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| e.to_string())?;
+        file.write_all(&chunk).await.map_err(|e| e.to_string())?;
+        downloaded += chunk.len() as f64;
+        
+        if total_size > 0.0 {
+            let progress = (downloaded / total_size) * 100.0;
+            let _ = app.emit("engine-download-progress", DownloadProgress {
+                engine: "yt-dlp".to_string(),
+                progress,
+            });
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_video_info(app: AppHandle, url: String) -> Result<serde_json::Value, String> {
+    let data_dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let yt_path = data_dir.join("yt-dlp.exe");
+
+    let output = Command::new(&yt_path)
+       .arg("-j")
        .arg("--no-playlist")
        .arg(&url)
        .output()
@@ -50,86 +107,87 @@ async fn start_download(
     playlist: bool,
     browser: String,
 ) -> Result<(), String> {
-    
-    let mut cmd = app.shell().sidecar("yt-dlp").map_err(|e| e.to_string())?;
+    let data_dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let yt_path = data_dir.join("yt-dlp.exe");
+    let ffmpeg_path = data_dir.join("ffmpeg.exe");
 
-    cmd = cmd.arg("-N").arg("4")
+    if !yt_path.exists() {
+        return Err("yt-dlp no está instalado.".to_string());
+    }
+
+    let mut cmd = Command::new(&yt_path);
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+
+    cmd.arg("-N").arg("4")
        .arg("--retries").arg("infinite")
        .arg("--fragment-retries").arg("infinite")
        .arg("--ignore-errors")
        .arg("--newline");
 
+    if ffmpeg_path.exists() {
+        cmd.arg("--ffmpeg-location").arg(&ffmpeg_path);
+    }
+
     if browser != "none" {
-        cmd = cmd.arg("--cookies-from-browser").arg(&browser);
+        cmd.arg("--cookies-from-browser").arg(&browser);
     }
 
     if !playlist {
-        cmd = cmd.arg("--no-playlist");
+        cmd.arg("--no-playlist");
     } else {
-        cmd = cmd.arg("--yes-playlist");
+        cmd.arg("--yes-playlist");
     }
 
-    // Format handling
     if format == "audio" {
-        cmd = cmd.arg("-x").arg("--audio-format").arg("mp3").arg("--audio-quality").arg("0");
+        cmd.arg("-x").arg("--audio-format").arg("mp3").arg("--audio-quality").arg("0");
     } else {
         match quality.as_str() {
-            "2160p" => { cmd = cmd.arg("-f").arg("bestvideo[height<=2160]+bestaudio/best"); },
-            "1080p" => { cmd = cmd.arg("-f").arg("bestvideo[height<=1080]+bestaudio/best"); },
-            "720p" => { cmd = cmd.arg("-f").arg("bestvideo[height<=720]+bestaudio/best"); },
-            _ => { cmd = cmd.arg("-f").arg("bestvideo+bestaudio/best"); },
+            "2160p" => cmd.arg("-f").arg("bestvideo[height<=2160]+bestaudio/best"),
+            "1080p" => cmd.arg("-f").arg("bestvideo[height<=1080]+bestaudio/best"),
+            "720p" => cmd.arg("-f").arg("bestvideo[height<=720]+bestaudio/best"),
+            _ => cmd.arg("-f").arg("bestvideo+bestaudio/best"),
         };
     }
 
-    cmd = cmd.arg("-o").arg(format!("{}/%(title)s.%(ext)s", dest_folder));
-    cmd = cmd.arg(&url);
+    cmd.arg("-o").arg(format!("{}/%(title)s.%(ext)s", dest_folder));
+    cmd.arg(&url);
 
-    let (mut rx, mut child) = cmd.spawn().map_err(|e| e.to_string())?;
+    let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+    let stdout = child.stdout.take().ok_or("Failed to open stdout")?;
+    let mut reader = BufReader::new(stdout).lines();
 
-    while let Some(event) = rx.next().await {
-        if let CommandEvent::Stdout(line_bytes) = event {
-            let line = String::from_utf8_lossy(&line_bytes);
-            
-            if line.starts_with("[download]") && line.contains("%") {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                let mut percent = 0.0;
-                let mut size = String::new();
-                let mut speed = String::new();
-                let mut eta = String::new();
+    while let Ok(Some(line)) = reader.next_line().await {
+        if line.starts_with("[download]") && line.contains("%") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            let mut percent = 0.0;
+            let mut size = String::new();
+            let mut speed = String::new();
+            let mut eta = String::new();
 
-                for (i, p) in parts.iter().enumerate() {
-                    if p.contains("%") {
-                        percent = p.replace("%", "").parse().unwrap_or(0.0);
-                    } else if p.contains("MiB") || p.contains("GiB") || p.contains("KiB") {
-                        if size.is_empty() {
-                            size = p.to_string();
-                        } else if p.contains("/s") {
-                            speed = p.to_string();
-                        }
-                    } else if *p == "ETA" && i + 1 < parts.len() {
-                        eta = parts[i + 1].to_string();
+            for (i, p) in parts.iter().enumerate() {
+                if p.contains("%") {
+                    percent = p.replace("%", "").parse().unwrap_or(0.0);
+                } else if p.contains("MiB") || p.contains("GiB") || p.contains("KiB") {
+                    if size.is_empty() {
+                        size = p.to_string();
+                    } else if p.contains("/s") {
+                        speed = p.to_string();
                     }
+                } else if *p == "ETA" && i + 1 < parts.len() {
+                    eta = parts[i + 1].to_string();
                 }
-
-                let _ = app.emit("download-progress", VideoProgress {
-                    percent,
-                    size,
-                    speed,
-                    eta,
-                    status: "Descargando...".to_string(),
-                });
             }
+
+            let _ = app.emit("download-progress", VideoProgress {
+                percent, size, speed, eta, status: "Descargando...".to_string(),
+            });
         }
     }
 
     let status = child.wait().await.map_err(|e| e.to_string())?;
     if status.success() {
         let _ = app.emit("download-progress", VideoProgress {
-            percent: 100.0,
-            size: "Completado".to_string(),
-            speed: "-".to_string(),
-            eta: "00:00".to_string(),
-            status: "Completado".to_string(),
+            percent: 100.0, size: "Completado".to_string(), speed: "-".to_string(), eta: "00:00".to_string(), status: "Completado".to_string(),
         });
         Ok(())
     } else {
@@ -162,6 +220,7 @@ async fn save_history(app: AppHandle, history_json: String) -> Result<(), String
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
@@ -169,6 +228,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             check_and_download_engines,
+            update_engines,
             get_video_info,
             start_download,
             get_history,
