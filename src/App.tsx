@@ -272,7 +272,7 @@ function App() {
         </div>
       </div>
 
-      <main className="flex-1 overflow-y-auto p-6 flex flex-col gap-6 max-w-4xl mx-auto w-full">
+      <main className="flex-1 overflow-y-auto p-6 flex flex-col gap-6 max-w-[1200px] mx-auto w-full">
         
         {/* BIG TITLE & DESCRIPTION */}
         <div className="flex justify-between items-start mb-2">

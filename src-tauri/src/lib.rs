@@ -51,7 +51,7 @@ async fn update_engines(app: AppHandle) -> Result<(), String> {
     let yt_target = data_dir.join("yt-dlp.exe");
 
     let client = reqwest::Client::builder().user_agent("VideoPlus/1.0").build().map_err(|e| e.to_string())?;
-    let res = client.get("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe").send().await.map_err(|e| e.to_string())?;
+    let res = client.get("https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.exe").send().await.map_err(|e| e.to_string())?;
     let total_size = res.content_length().unwrap_or(0) as f64;
     
     let mut file = File::create(&yt_target).await.map_err(|e| e.to_string())?;
@@ -80,7 +80,11 @@ async fn get_video_info(app: AppHandle, url: String, browser: String) -> Result<
     let yt_path = data_dir.join("yt-dlp.exe");
 
     let mut cmd = Command::new(&yt_path);
-    cmd.arg("-j").arg("--no-playlist");
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+
+    cmd.arg("-j").arg("--no-playlist")
+       .arg("--extractor-args").arg("youtube:player_client=android,web");
 
     if browser != "none" {
         cmd.arg("--cookies-from-browser").arg(&browser);
@@ -120,13 +124,17 @@ async fn start_download(
     }
 
     let mut cmd = Command::new(&yt_path);
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
     cmd.arg("-N").arg("4")
        .arg("--retries").arg("infinite")
        .arg("--fragment-retries").arg("infinite")
        .arg("--ignore-errors")
-       .arg("--newline");
+       .arg("--newline")
+       .arg("--extractor-args").arg("youtube:player_client=android,web");
 
     if ffmpeg_path.exists() {
         cmd.arg("--ffmpeg-location").arg(&ffmpeg_path);
