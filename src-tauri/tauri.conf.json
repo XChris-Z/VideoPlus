@@ -50,7 +50,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://api.github.com/repos/TU_USUARIO/TU_REPO/releases/latest"
+        "https://api.github.com/repos/XChris-Z/VideoPlus/releases/latest"
       ],
       "pubkey": "AQUÍ_IRÁ_TU_CLAVE_PÚBLICA_GENERADA",
       "windows": {
