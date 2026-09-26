@@ -81,7 +81,12 @@ fn get_engine_urls() -> (String, String, String, String) {
 }
 
 async fn download_file(app: &AppHandle, url: &str, path: &PathBuf, engine: String) -> Result<(), String> {
-    let res = reqwest::get(url).await.map_err(|e| e.to_string())?;
+    let client = reqwest::Client::builder()
+        .user_agent("VideoPlus/1.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+        
+    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
     let total_size = res.content_length().unwrap_or(0) as f64;
     
     let mut file = File::create(path).await.map_err(|e| e.to_string())?;
