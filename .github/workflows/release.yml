@@ -40,5 +40,5 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "VideoPlus ${{ github.ref_name }}"
           releaseBody: "Nueva actualización de Universal Video Downloader"
-          releaseDraft: true # Si es true, lo crea como borrador para que lo revises antes de publicar
+          releaseDraft: false # Ahora las versiones se publicarán automáticamente y no se quedarán como borrador
           prerelease: false
