@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Universal Video Downloader",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "identifier": "com.xchrisz.videodownloader",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -54,7 +54,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://api.github.com/repos/XChris-Z/VideoPlus/releases/latest"
+        "https://github.com/XChris-Z/VideoPlus/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY4RTczN0Q3RjQ2REFEMUQKUldRZHJXMzAxemZuYVBhNDk2ZlZRcGFTTEpZZSt4RmJFMjhMdTk1bzU4VGdzV3JpcEN1VXROTnUK",
       "windows": {

@@ -83,11 +83,13 @@ async fn get_video_info(app: AppHandle, url: String, browser: String) -> Result<
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
 
-    cmd.arg("-j").arg("--no-playlist")
-       .arg("--extractor-args").arg("youtube:player_client=android,web");
+    cmd.arg("-j").arg("--no-playlist");
 
     if browser != "none" {
         cmd.arg("--cookies-from-browser").arg(&browser);
+        cmd.arg("--extractor-args").arg("youtube:player_client=web");
+    } else {
+        cmd.arg("--extractor-args").arg("youtube:player_client=android,web");
     }
 
     let output = cmd.arg(&url)
@@ -133,8 +135,7 @@ async fn start_download(
        .arg("--retries").arg("infinite")
        .arg("--fragment-retries").arg("infinite")
        .arg("--ignore-errors")
-       .arg("--newline")
-       .arg("--extractor-args").arg("youtube:player_client=android,web");
+       .arg("--newline");
 
     if ffmpeg_path.exists() {
         cmd.arg("--ffmpeg-location").arg(&ffmpeg_path);
@@ -142,6 +143,9 @@ async fn start_download(
 
     if browser != "none" {
         cmd.arg("--cookies-from-browser").arg(&browser);
+        cmd.arg("--extractor-args").arg("youtube:player_client=web");
+    } else {
+        cmd.arg("--extractor-args").arg("youtube:player_client=android,web");
     }
 
     if !playlist {

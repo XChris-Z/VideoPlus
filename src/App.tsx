@@ -22,6 +22,7 @@ function App() {
   const [downloadError, setDownloadError] = useState("");
   const [infoError, setInfoError] = useState("");
   const [progress, setProgress] = useState(0);
+  const [playlist, setPlaylist] = useState(false);
   const [stats, setStats] = useState({ size: "0 MB", speed: "0 MB/s", eta: "--:--", status: "" });
   const [engineStatus, setEngineStatus] = useState("Verificando motores...");
   const [history, setHistory] = useState<any[]>([]);
@@ -190,7 +191,7 @@ function App() {
         format,
         quality,
         destFolder,
-        playlist: false, // O el estado real
+        playlist: playlist,
         browser
       });
     } catch (error: any) {
@@ -248,12 +249,16 @@ function App() {
               ) : (
                 <div className="flex flex-col gap-3">
                   {[...history].reverse().map((item, i) => (
-                    <div key={i} className="flex flex-col gap-1 p-3 bg-zinc-950 rounded-lg border border-zinc-800/50">
-                      <h4 className="font-medium text-sm text-zinc-200 line-clamp-1">{item.title}</h4>
-                      <div className="flex items-center gap-3 text-xs text-zinc-500">
-                        <span className="text-violet-400">{item.format.toUpperCase()}</span>
-                        <span>{item.quality}</span>
-                        <span>{new Date(item.date).toLocaleDateString()}</span>
+                    <div key={i} className="flex flex-col gap-1.5 p-4 bg-zinc-950/80 rounded-xl border border-zinc-800 hover:border-violet-500/30 transition-colors">
+                      <h4 className="font-semibold text-sm text-zinc-100">{item.title}</h4>
+                      <div className="flex items-center gap-2 text-xs text-zinc-400 break-all">
+                        <Globe size={12} className="text-violet-400 shrink-0"/>
+                        <span className="font-mono">{item.url}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs font-medium text-zinc-500 mt-1">
+                        <span className="bg-zinc-800 px-2 py-0.5 rounded text-violet-300">{item.format.toUpperCase()}</span>
+                        <span className="bg-zinc-800 px-2 py-0.5 rounded text-sky-300">{item.quality}</span>
+                        <span className="bg-zinc-800 px-2 py-0.5 rounded text-zinc-300">{new Date(item.date).toLocaleString()}</span>
                       </div>
                     </div>
                   ))}
@@ -435,7 +440,13 @@ function App() {
 
             <div className="grid grid-cols-2 gap-4 mt-1">
               <div className="flex items-center gap-3 bg-zinc-950/50 p-3 rounded-lg border border-zinc-800/50">
-                <input type="checkbox" id="playlist" className="w-4 h-4 accent-violet-600 bg-zinc-900 border-zinc-700 rounded" />
+                <input 
+                  type="checkbox" 
+                  id="playlist" 
+                  checked={playlist}
+                  onChange={(e) => setPlaylist(e.target.checked)}
+                  className="w-4 h-4 accent-violet-600 bg-zinc-900 border-zinc-700 rounded" 
+                />
                 <label htmlFor="playlist" className="text-sm text-zinc-300 select-none cursor-pointer">Descargar Playlist completa</label>
               </div>
               <div className="flex items-center gap-2">
@@ -465,9 +476,19 @@ function App() {
               className="flex flex-col gap-3 bg-zinc-900 p-5 rounded-xl border border-zinc-800 shadow-lg"
             >
               {downloadError ? (
-                <div className="text-red-400 text-sm p-2 bg-red-500/10 rounded border border-red-500/20 flex flex-col gap-1 max-h-32 overflow-y-auto">
-                  <span className="font-bold flex items-center gap-1"><AlertCircle size={16}/> Error en la descarga</span>
-                  <span className="font-mono text-xs opacity-80">{downloadError}</span>
+                <div className="bg-zinc-950 border border-red-500/30 rounded-xl overflow-hidden shadow-lg">
+                  <div className="bg-red-500/10 px-4 py-2 flex items-center justify-between border-b border-red-500/20">
+                    <div className="font-semibold flex items-center gap-2 text-red-400 text-sm"><AlertCircle size={16}/> Logs de Error</div>
+                    <button 
+                      onClick={() => navigator.clipboard.writeText(downloadError)}
+                      className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 px-2 py-1 rounded transition-colors border border-red-500/30"
+                    >
+                      Copiar Logs
+                    </button>
+                  </div>
+                  <div className="p-4 overflow-y-auto max-h-48 font-mono text-xs text-red-300/90 whitespace-pre-wrap break-all">
+                    {downloadError}
+                  </div>
                 </div>
               ) : (
                 <>
@@ -476,20 +497,30 @@ function App() {
                       <span className="text-xs font-mono text-zinc-500 mb-1">{stats.status || "Descargando..."}</span>
                       <span className="font-semibold text-zinc-200 line-clamp-1 truncate">{videoInfo?.title || url}</span>
                     </div>
-                    <span className="text-2xl font-bold text-zinc-100 font-mono">{progress}%</span>
+                    <span className="text-2xl font-bold text-zinc-100 font-mono">{progress > 0 ? `${progress}%` : '...'}</span>
                   </div>
                   
-                  <div className="h-1.5 w-full bg-zinc-950 rounded-full overflow-hidden">
-                    <motion.div 
-                      className={`h-full ${progress === 100 ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)]' : getPlatformProgressColor()}`}
-                      style={{ width: `${progress}%` }}
-                    />
+                  <div className="h-1.5 w-full bg-zinc-950 rounded-full overflow-hidden relative">
+                    {progress === 0 ? (
+                      <motion.div 
+                        className={`h-full w-1/3 absolute rounded-full ${getPlatformProgressColor()}`}
+                        animate={{ left: ["-30%", "100%"] }}
+                        transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+                      />
+                    ) : (
+                      <motion.div 
+                        className={`h-full ${progress === 100 ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)]' : getPlatformProgressColor()}`}
+                        style={{ width: `${progress}%` }}
+                      />
+                    )}
                   </div>
 
-                  <div className="flex justify-between text-xs text-zinc-400 font-mono mt-1">
-                    <span className="flex items-center gap-1"><HardDrive size={12}/> {stats.size}</span>
-                    <span className="text-emerald-500">{stats.speed}</span>
-                    <span>ETA: {stats.eta}</span>
+                  <div className="flex justify-between items-center text-xs text-zinc-400 font-mono mt-1">
+                    <div className="flex gap-4">
+                      <span className="flex items-center gap-1"><HardDrive size={12}/> {stats.size !== "0 MB" ? stats.size : "Calculando tamaño..."}</span>
+                      <span className="text-emerald-500">{stats.speed}</span>
+                    </div>
+                    <span>ETA: {stats.eta !== "--:--" ? stats.eta : "N/A"}</span>
                   </div>
                 </>
               )}

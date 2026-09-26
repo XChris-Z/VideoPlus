@@ -42,3 +42,4 @@ jobs:
           releaseBody: "Nueva actualización de Universal Video Downloader"
           releaseDraft: false # Ahora las versiones se publicarán automáticamente y no se quedarán como borrador
           prerelease: false
+          includeUpdaterJson: true
