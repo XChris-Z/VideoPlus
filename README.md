@@ -39,25 +39,20 @@ Asegúrate de tener instalados los siguientes componentes en tu sistema:
 2. **Rust y Cargo** ([Instalar Rust](https://www.rust-lang.org/tools/install))
 3. Herramientas de compilación de C++ (En Windows, instala "Desktop development with C++" a través del Visual Studio Installer).
 
-### 1. Clonar el repositorio
-```bash
-git clone https://github.com/TU_USUARIO/TU_REPO.git
-cd Universal-Video-Downloader
-```
 
-### 2. Instalar dependencias del Frontend
+### 1. Instalar dependencias del Frontend
 ```bash
 npm install
 ```
 
-### 3. Modo Desarrollo
+### 2. Modo Desarrollo
 Para ejecutar la aplicación en entorno de desarrollo (con *Hot-Reload*):
 ```bash
 npm run tauri dev
 ```
 *(Nota: La primera vez tomará algo de tiempo mientras Cargo compila el backend en Rust).*
 
-### 4. Compilar para Producción (Crear Instalador)
+### 3. Compilar para Producción (Crear Instalador)
 Para construir el instalador final `.nsis` optimizado:
 ```bash
 npm run tauri build

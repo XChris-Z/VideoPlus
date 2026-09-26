@@ -52,7 +52,7 @@
       "endpoints": [
         "https://api.github.com/repos/XChris-Z/VideoPlus/releases/latest"
       ],
-      "pubkey": "AQUÍ_IRÁ_TU_CLAVE_PÚBLICA_GENERADA",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY4RTczN0Q3RjQ2REFEMUQKUldRZHJXMzAxemZuYVBhNDk2ZlZRcGFTTEpZZSt4RmJFMjhMdTk1bzU4VGdzV3JpcEN1VXROTnUK",
       "windows": {
         "installMode": "passive"
       }

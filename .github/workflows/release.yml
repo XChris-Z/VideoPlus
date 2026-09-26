@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*' # Se ejecuta cuando creas una etiqueta como v1.0.0, v1.0.1, v2.0.0
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [windows-latest] # Puedes agregar 'macos-latest', 'ubuntu-22.04' después si quieres
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependencias de Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Instalar dependencias de NPM
+        run: npm install
+
+      - name: Compilar y Publicar en GitHub Releases
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "VideoPlus ${{ github.ref_name }}"
+          releaseBody: "Nueva actualización de Universal Video Downloader"
+          releaseDraft: true # Si es true, lo crea como borrador para que lo revises antes de publicar
+          prerelease: false

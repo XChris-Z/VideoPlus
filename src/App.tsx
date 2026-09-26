@@ -4,11 +4,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { 
-  Download, Settings, History, ClipboardPaste, 
-  CheckCircle2, Folder, Youtube, MonitorPlay, 
-  Video, Music, HardDrive, Clock
+  Download, Settings, ClipboardPaste, 
+  CheckCircle2, Folder, Film, MonitorPlay, 
+  Video, Music, HardDrive, Clock, Globe
 } from "lucide-react";
-import "./App.css"; // we will keep it simple or remove if unused
 
 function App() {
   const [url, setUrl] = useState("");
@@ -112,22 +111,38 @@ function App() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col font-sans select-none">
       {/* Header (Draggable for Tauri) */}
-      <div data-tauri-drag-region className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-4 sticky top-0 z-50">
+      <div data-tauri-drag-region className="h-10 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-4 sticky top-0 z-50">
         <div className="flex items-center gap-2 pointer-events-none">
-          <div className="w-3 h-3 rounded-full bg-violet-600 shadow-[0_0_10px_rgba(124,58,237,0.8)]"></div>
-          <h1 className="font-bold tracking-wider text-sm text-zinc-200 uppercase">Universal Video Downloader</h1>
+          <div className="w-2.5 h-2.5 rounded-full bg-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.8)]"></div>
+          <h1 className="font-semibold tracking-wide text-xs text-zinc-300 uppercase">Universal Video Downloader - Motor yt-dlp</h1>
         </div>
-        <button className="p-2 hover:bg-zinc-800 rounded-md transition-colors text-zinc-400 hover:text-zinc-50">
-          <History size={18} />
-        </button>
       </div>
 
       <main className="flex-1 overflow-y-auto p-6 flex flex-col gap-6 max-w-4xl mx-auto w-full">
         
+        {/* BIG TITLE & DESCRIPTION */}
+        <div className="flex justify-between items-start mb-2">
+          <div className="flex flex-col gap-2">
+            <h1 className="text-4xl font-extrabold tracking-tight text-white uppercase drop-shadow-md">
+              Universal Video Downloader
+            </h1>
+            <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-400">
+              <span>Descarga de</span>
+              <span className="flex items-center gap-1 text-zinc-300"><Globe size={14}/> YouTube,</span>
+              <span className="flex items-center gap-1 text-zinc-300">Instagram,</span>
+              <span className="flex items-center gap-1 text-zinc-300">X/Twitter,</span>
+              <span className="flex items-center gap-1 text-zinc-300">Facebook y más.</span>
+            </div>
+          </div>
+          <button className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg border border-zinc-700 transition-colors font-medium text-sm shadow-sm">
+            Ver Historial
+          </button>
+        </div>
+
         {/* URL Input Section */}
         <section className="bg-zinc-900 p-1 rounded-xl border border-zinc-800 flex items-center shadow-lg focus-within:border-violet-500/50 transition-colors">
           <div className="px-4 text-zinc-500">
-            <Youtube size={20} />
+            <Film size={20} />
           </div>
           <input 
             type="text" 
