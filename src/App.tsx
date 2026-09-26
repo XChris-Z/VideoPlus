@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/plugin-dialog";
 import { 
   Download, Settings, History, ClipboardPaste, 
   CheckCircle2, Folder, Youtube, MonitorPlay, 
@@ -14,6 +15,7 @@ function App() {
   const [format, setFormat] = useState("video");
   const [quality, setQuality] = useState("1080p");
   const [browser, setBrowser] = useState("firefox");
+  const [destFolder, setDestFolder] = useState("C:\\Users\\Downloads\\VideoPlus");
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [stats, setStats] = useState({ size: "0 MB", speed: "0 MB/s", eta: "--:--" });
@@ -71,6 +73,21 @@ function App() {
     }
   };
 
+  const handleSelectFolder = async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: 'Seleccionar carpeta de descarga'
+      });
+      if (selected && typeof selected === 'string') {
+        setDestFolder(selected);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleDownload = async () => {
     if (!url) return;
     setDownloading(true);
@@ -82,7 +99,7 @@ function App() {
         url,
         format,
         quality,
-        destFolder: "C:\\Users\\Downloads\\VideoPlus", // Debería venir de un diálogo de carpeta
+        destFolder,
         playlist: false, // O el estado real
         browser
       });
@@ -199,10 +216,14 @@ function App() {
                 <input 
                   type="text" 
                   readOnly 
-                  value="C:\Users\Downloads\VideoPlus" 
+                  value={destFolder}
                   className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 text-sm text-zinc-400 outline-none"
                 />
-                <button className="p-2.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 transition-colors text-zinc-300">
+                <button 
+                  onClick={handleSelectFolder}
+                  className="p-2.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 transition-colors text-zinc-300"
+                  title="Seleccionar carpeta"
+                >
                   <Folder size={18} />
                 </button>
               </div>
