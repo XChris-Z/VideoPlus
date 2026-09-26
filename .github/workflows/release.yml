@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*' # Se ejecuta cuando creas una etiqueta como v1.0.0, v1.0.1, v2.0.0
+  workflow_dispatch: # Permite ejecutar la acción manualmente desde GitHub
 
 jobs:
   publish-tauri:
