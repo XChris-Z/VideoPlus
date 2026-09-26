@@ -75,14 +75,18 @@ async fn update_engines(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn get_video_info(app: AppHandle, url: String) -> Result<serde_json::Value, String> {
+async fn get_video_info(app: AppHandle, url: String, browser: String) -> Result<serde_json::Value, String> {
     let data_dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
     let yt_path = data_dir.join("yt-dlp.exe");
 
-    let output = Command::new(&yt_path)
-       .arg("-j")
-       .arg("--no-playlist")
-       .arg(&url)
+    let mut cmd = Command::new(&yt_path);
+    cmd.arg("-j").arg("--no-playlist");
+
+    if browser != "none" {
+        cmd.arg("--cookies-from-browser").arg(&browser);
+    }
+
+    let output = cmd.arg(&url)
        .output()
        .await
        .map_err(|e| e.to_string())?;
@@ -154,6 +158,19 @@ async fn start_download(
 
     let mut child = cmd.spawn().map_err(|e| e.to_string())?;
     let stdout = child.stdout.take().ok_or("Failed to open stdout")?;
+    let stderr = child.stderr.take().ok_or("Failed to open stderr")?;
+
+    let err_task = tokio::spawn(async move {
+        let mut err_reader = BufReader::new(stderr).lines();
+        let mut last_err = String::new();
+        while let Ok(Some(line)) = err_reader.next_line().await {
+            if line.contains("ERROR:") {
+                last_err = line;
+            }
+        }
+        last_err
+    });
+
     let mut reader = BufReader::new(stdout).lines();
 
     while let Ok(Some(line)) = reader.next_line().await {
@@ -165,16 +182,17 @@ async fn start_download(
             let mut eta = String::new();
 
             for (i, p) in parts.iter().enumerate() {
-                if p.contains("%") {
-                    percent = p.replace("%", "").parse().unwrap_or(0.0);
-                } else if p.contains("MiB") || p.contains("GiB") || p.contains("KiB") {
+                let p_clean = p.replace("~", "");
+                if p_clean.ends_with("%") {
+                    percent = p_clean.replace("%", "").parse().unwrap_or(0.0);
+                } else if p_clean.contains("/s") {
+                    speed = p_clean;
+                } else if p_clean.contains("B") && !p_clean.contains("ETA") {
                     if size.is_empty() {
-                        size = p.to_string();
-                    } else if p.contains("/s") {
-                        speed = p.to_string();
+                        size = p_clean;
                     }
-                } else if *p == "ETA" && i + 1 < parts.len() {
-                    eta = parts[i + 1].to_string();
+                } else if p_clean == "ETA" && i + 1 < parts.len() {
+                    eta = parts[i + 1].replace("~", "");
                 }
             }
 
@@ -185,13 +203,19 @@ async fn start_download(
     }
 
     let status = child.wait().await.map_err(|e| e.to_string())?;
+    let last_error = err_task.await.unwrap_or_default();
+
     if status.success() {
         let _ = app.emit("download-progress", VideoProgress {
             percent: 100.0, size: "Completado".to_string(), speed: "-".to_string(), eta: "00:00".to_string(), status: "Completado".to_string(),
         });
         Ok(())
     } else {
-        Err("Error en la descarga".to_string())
+        if !last_error.is_empty() {
+            Err(last_error)
+        } else {
+            Err("Error en la descarga. Verifica la URL o tu conexión.".to_string())
+        }
     }
 }
 

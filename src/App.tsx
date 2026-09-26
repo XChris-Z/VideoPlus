@@ -8,18 +8,21 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { 
   Download, Settings, ClipboardPaste, 
   CheckCircle2, Folder, Film, MonitorPlay, 
-  Video, Music, HardDrive, Clock, Globe
+  Video, Music, HardDrive, Clock, Globe, X, AlertCircle
 } from "lucide-react";
+import { downloadDir } from '@tauri-apps/api/path';
 
 function App() {
   const [url, setUrl] = useState("");
-  const [format, setFormat] = useState("video");
-  const [quality, setQuality] = useState("1080p");
-  const [browser, setBrowser] = useState("firefox");
-  const [destFolder, setDestFolder] = useState("C:\\Users\\Downloads\\VideoPlus");
+  const [format, setFormat] = useState(() => localStorage.getItem('vplus_format') || "video");
+  const [quality, setQuality] = useState(() => localStorage.getItem('vplus_quality') || "1080p");
+  const [browser, setBrowser] = useState(() => localStorage.getItem('vplus_browser') || "firefox");
+  const [destFolder, setDestFolder] = useState(() => localStorage.getItem('vplus_destFolder') || "");
   const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
+  const [infoError, setInfoError] = useState("");
   const [progress, setProgress] = useState(0);
-  const [stats, setStats] = useState({ size: "0 MB", speed: "0 MB/s", eta: "--:--" });
+  const [stats, setStats] = useState({ size: "0 MB", speed: "0 MB/s", eta: "--:--", status: "" });
   const [engineStatus, setEngineStatus] = useState("Verificando motores...");
   const [history, setHistory] = useState<any[]>([]);
 
@@ -57,11 +60,21 @@ function App() {
       try { setHistory(JSON.parse(res)); } catch(e) {}
     });
 
+    // Cargar directorio de descargas por defecto si está vacío
+    if (!localStorage.getItem('vplus_destFolder')) {
+      downloadDir().then(dir => setDestFolder(dir + "VideoPlus"));
+    }
+
     return () => {
       unlistenVideo.then(f => f());
       unlistenEngine.then(f => f());
     }
   }, []);
+
+  useEffect(() => { localStorage.setItem('vplus_format', format); }, [format]);
+  useEffect(() => { localStorage.setItem('vplus_quality', quality); }, [quality]);
+  useEffect(() => { localStorage.setItem('vplus_browser', browser); }, [browser]);
+  useEffect(() => { if (destFolder) localStorage.setItem('vplus_destFolder', destFolder); }, [destFolder]);
 
   const handleUpdateApp = async () => {
     try {
@@ -77,7 +90,7 @@ function App() {
       }
     } catch (e) {
       console.error(e);
-      setEngineStatus(`Error actualizando app: ${e}`);
+      setEngineStatus("Aún no hay versiones publicadas en GitHub.");
     } finally {
       setUpdatingApp(false);
     }
@@ -104,30 +117,38 @@ function App() {
     await invoke("save_history", { historyJson: JSON.stringify(newHistory) });
   };
 
-  const fetchVideoInfo = async (targetUrl: string) => {
+  const fetchVideoInfo = async (targetUrl: string, targetBrowser: string) => {
     if (!targetUrl || !targetUrl.startsWith("http")) return;
     setLoadingInfo(true);
     setVideoInfo(null);
+    setInfoError("");
     try {
-      const info: any = await invoke("get_video_info", { url: targetUrl });
+      const info: any = await invoke("get_video_info", { url: targetUrl, browser: targetBrowser });
       setVideoInfo({
         title: info.title || "Video Desconocido",
         uploader: info.uploader || info.extractor_key || "Canal Desconocido",
         thumbnail: info.thumbnail || "",
         duration: info.duration_string || "--:--"
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching video info", error);
+      setInfoError(error.toString());
     } finally {
       setLoadingInfo(false);
     }
   };
 
+  useEffect(() => {
+    if (url && url.startsWith("http")) {
+      fetchVideoInfo(url, browser);
+    }
+  }, [browser]);
+
   const handlePaste = async () => {
     try {
       const text = await navigator.clipboard.readText();
       setUrl(text);
-      fetchVideoInfo(text);
+      fetchVideoInfo(text, browser);
     } catch (err) {
       console.error("Failed to read clipboard contents: ", err);
     }
@@ -137,7 +158,7 @@ function App() {
     const newUrl = e.target.value;
     setUrl(newUrl);
     if (newUrl.startsWith("http")) {
-       fetchVideoInfo(newUrl);
+       fetchVideoInfo(newUrl, browser);
     }
   };
 
@@ -159,8 +180,9 @@ function App() {
   const handleDownload = async () => {
     if (!url) return;
     setDownloading(true);
+    setDownloadError("");
     setProgress(0);
-    setStats({ size: "Calculando...", speed: "-", eta: "--:--" });
+    setStats({ size: "Calculando...", speed: "-", eta: "--:--", status: "Iniciando..." });
 
     try {
       await invoke("start_download", {
@@ -171,10 +193,39 @@ function App() {
         playlist: false, // O el estado real
         browser
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      setDownloadError(error.toString());
+    } finally {
       setDownloading(false);
     }
+  };
+
+  const getPlatformColor = () => {
+    if (!url) return "bg-violet-600 hover:bg-violet-700 shadow-[0_0_20px_rgba(124,58,237,0.3)] hover:shadow-[0_0_30px_rgba(124,58,237,0.5)]";
+    if (url.includes("youtube.com") || url.includes("youtu.be")) return "bg-red-600 hover:bg-red-700 shadow-[0_0_20px_rgba(220,38,38,0.3)] hover:shadow-[0_0_30px_rgba(220,38,38,0.5)]";
+    if (url.includes("twitter.com") || url.includes("x.com")) return "bg-sky-600 hover:bg-sky-700 shadow-[0_0_20px_rgba(2,132,199,0.3)] hover:shadow-[0_0_30px_rgba(2,132,199,0.5)]";
+    if (url.includes("instagram.com") || url.includes("facebook.com")) return "bg-pink-600 hover:bg-pink-700 shadow-[0_0_20px_rgba(219,39,119,0.3)] hover:shadow-[0_0_30px_rgba(219,39,119,0.5)]";
+    if (url.includes("tiktok.com")) return "bg-black hover:bg-zinc-900 border border-zinc-700 shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(255,255,255,0.2)]";
+    return "bg-violet-600 hover:bg-violet-700 shadow-[0_0_20px_rgba(124,58,237,0.3)] hover:shadow-[0_0_30px_rgba(124,58,237,0.5)]";
+  };
+
+  const getPlatformProgressColor = () => {
+    if (!url) return "bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.8)]";
+    if (url.includes("youtube.com") || url.includes("youtu.be")) return "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]";
+    if (url.includes("twitter.com") || url.includes("x.com")) return "bg-sky-500 shadow-[0_0_10px_rgba(14,165,233,0.8)]";
+    if (url.includes("instagram.com") || url.includes("facebook.com")) return "bg-pink-500 shadow-[0_0_10px_rgba(236,72,153,0.8)]";
+    if (url.includes("tiktok.com")) return "bg-white shadow-[0_0_10px_rgba(255,255,255,0.8)]";
+    return "bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.8)]";
+  };
+
+  const getPlatformGlow = () => {
+    if (!url) return "focus-within:border-violet-500/50";
+    if (url.includes("youtube.com") || url.includes("youtu.be")) return "focus-within:border-red-500/50";
+    if (url.includes("twitter.com") || url.includes("x.com")) return "focus-within:border-sky-500/50";
+    if (url.includes("instagram.com") || url.includes("facebook.com")) return "focus-within:border-pink-500/50";
+    if (url.includes("tiktok.com")) return "focus-within:border-zinc-500/50";
+    return "focus-within:border-violet-500/50";
   };
 
   const [showHistory, setShowHistory] = useState(false);
@@ -253,7 +304,7 @@ function App() {
         </div>
 
         {/* URL Input Section */}
-        <section className="bg-zinc-900 p-1 rounded-xl border border-zinc-800 flex items-center shadow-lg focus-within:border-violet-500/50 transition-colors">
+        <section className={`bg-zinc-900 p-1 rounded-xl border border-zinc-800 flex items-center shadow-lg transition-colors ${getPlatformGlow()}`}>
           <div className="px-4 text-zinc-500">
             <Film size={20} />
           </div>
@@ -270,8 +321,14 @@ function App() {
             </div>
           )}
           <button 
+            onClick={() => { setUrl(""); setVideoInfo(null); setInfoError(""); setProgress(0); setDownloadError(""); }}
+            className="flex items-center gap-2 px-4 py-2 bg-zinc-800/50 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 rounded-lg mr-2 transition-colors font-medium text-sm"
+          >
+            <X size={16} /> Limpiar
+          </button>
+          <button 
             onClick={handlePaste}
-            className="flex items-center gap-2 px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg mr-1 transition-colors font-medium text-sm"
+            className="flex items-center gap-2 px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg mr-1 transition-colors font-medium text-sm"
           >
             <ClipboardPaste size={16} /> Pegar
           </button>
@@ -298,9 +355,20 @@ function App() {
               <h3 className="font-semibold text-zinc-200 line-clamp-2 leading-tight">
                 {loadingInfo ? "Cargando información..." : (videoInfo?.title || "Esperando video...")}
               </h3>
-              <p className="text-sm text-violet-400 font-medium mt-1">
-                {videoInfo?.uploader || "Autor / Canal"}
-              </p>
+              <div className="flex items-center justify-between mt-1">
+                <p className="text-sm text-violet-400 font-medium">
+                  {videoInfo?.uploader || "Autor / Canal"}
+                </p>
+                {history.some(h => h.url === url) && (
+                  <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30">Ya descargado</span>
+                )}
+              </div>
+              {infoError && (
+                <div className="mt-2 text-xs text-red-400 bg-red-500/10 p-2 rounded border border-red-500/20 max-h-24 overflow-y-auto">
+                  <span className="font-semibold flex items-center gap-1"><AlertCircle size={14}/> Error de extracción:</span>
+                  <span className="font-mono mt-1 opacity-80">{infoError}</span>
+                </div>
+              )}
             </div>
           </section>
 
@@ -390,32 +458,41 @@ function App() {
 
         {/* Action Section */}
         <section className="flex flex-col gap-4 mt-2">
-          {downloading && (
+          {(downloading || progress > 0 || downloadError) && (
             <motion.div 
               initial={{ opacity: 0, y: -10 }} 
               animate={{ opacity: 1, y: 0 }}
               className="flex flex-col gap-3 bg-zinc-900 p-5 rounded-xl border border-zinc-800 shadow-lg"
             >
-              <div className="flex justify-between items-end">
-                <div className="flex flex-col">
-                  <span className="text-xs font-mono text-cyan-500 mb-1">Descargando...</span>
-                  <span className="font-semibold text-zinc-200">Video_Tutorial_2026.mp4</span>
+              {downloadError ? (
+                <div className="text-red-400 text-sm p-2 bg-red-500/10 rounded border border-red-500/20 flex flex-col gap-1 max-h-32 overflow-y-auto">
+                  <span className="font-bold flex items-center gap-1"><AlertCircle size={16}/> Error en la descarga</span>
+                  <span className="font-mono text-xs opacity-80">{downloadError}</span>
                 </div>
-                <span className="text-2xl font-bold text-zinc-100 font-mono">{progress}%</span>
-              </div>
-              
-              <div className="h-1.5 w-full bg-zinc-950 rounded-full overflow-hidden">
-                <motion.div 
-                  className="h-full bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.8)]"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
+              ) : (
+                <>
+                  <div className="flex justify-between items-end">
+                    <div className="flex flex-col gap-1 overflow-hidden pr-4">
+                      <span className="text-xs font-mono text-zinc-500 mb-1">{stats.status || "Descargando..."}</span>
+                      <span className="font-semibold text-zinc-200 line-clamp-1 truncate">{videoInfo?.title || url}</span>
+                    </div>
+                    <span className="text-2xl font-bold text-zinc-100 font-mono">{progress}%</span>
+                  </div>
+                  
+                  <div className="h-1.5 w-full bg-zinc-950 rounded-full overflow-hidden">
+                    <motion.div 
+                      className={`h-full ${progress === 100 ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)]' : getPlatformProgressColor()}`}
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
 
-              <div className="flex justify-between text-xs text-zinc-400 font-mono mt-1">
-                <span className="flex items-center gap-1"><HardDrive size={12}/> {stats.size}</span>
-                <span className="text-emerald-500">{stats.speed}</span>
-                <span>ETA: {stats.eta}</span>
-              </div>
+                  <div className="flex justify-between text-xs text-zinc-400 font-mono mt-1">
+                    <span className="flex items-center gap-1"><HardDrive size={12}/> {stats.size}</span>
+                    <span className="text-emerald-500">{stats.speed}</span>
+                    <span>ETA: {stats.eta}</span>
+                  </div>
+                </>
+              )}
             </motion.div>
           )}
 
@@ -425,7 +502,7 @@ function App() {
             className={`w-full py-5 rounded-xl font-bold text-lg tracking-wide flex items-center justify-center gap-3 transition-all ${
               downloading 
               ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
-              : 'bg-violet-600 hover:bg-violet-700 text-white shadow-[0_0_20px_rgba(124,58,237,0.3)] hover:shadow-[0_0_30px_rgba(124,58,237,0.5)] active:scale-[0.99]'
+              : `text-white active:scale-[0.99] ${getPlatformColor()}`
             }`}
           >
             <Download size={24} />
