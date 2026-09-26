@@ -41,7 +41,7 @@ function App() {
     const unlistenVideo = listen<any>("download-progress", (event) => {
       const p = event.payload;
       setProgress(p.percent);
-      setStats({ size: p.size, speed: p.speed, eta: p.eta });
+      setStats({ size: p.size, speed: p.speed, eta: p.eta, status: p.status });
       if (p.percent === 100) {
         setDownloading(false);
         saveToHistory();
