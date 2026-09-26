@@ -21,12 +21,10 @@ function App() {
   const [engineStatus, setEngineStatus] = useState("Verificando motores...");
   const [history, setHistory] = useState<any[]>([]);
 
-  useEffect(() => {
-    // Escuchar progreso del motor
-    const unlistenEngine = listen<any>("engine-download-progress", (event) => {
-      setEngineStatus(`Descargando ${event.payload.engine}... ${event.payload.progress.toFixed(1)}%`);
-    });
+  const [videoInfo, setVideoInfo] = useState<any>(null);
+  const [loadingInfo, setLoadingInfo] = useState(false);
 
+  useEffect(() => {
     // Escuchar progreso del video
     const unlistenVideo = listen<any>("download-progress", (event) => {
       const p = event.payload;
@@ -38,12 +36,8 @@ function App() {
       }
     });
 
-    // Iniciar verificación
-    invoke("check_and_download_engines").then(() => {
-      setEngineStatus("Motor: yt-dlp Listo");
-    }).catch(err => {
-      setEngineStatus(`Error: ${err}`);
-    });
+    // Motores locales
+    setEngineStatus("Motor Local: yt-dlp Listo ✅");
 
     // Cargar historial
     invoke("get_history").then((res: any) => {
@@ -51,24 +45,51 @@ function App() {
     });
 
     return () => {
-      unlistenEngine.then(f => f());
       unlistenVideo.then(f => f());
     }
   }, []);
 
   const saveToHistory = async () => {
-    const newEntry = { url, format, quality, date: new Date().toISOString() };
+    const newEntry = { url, format, quality, date: new Date().toISOString(), title: videoInfo?.title || url };
     const newHistory = [...history, newEntry];
     setHistory(newHistory);
     await invoke("save_history", { historyJson: JSON.stringify(newHistory) });
+  };
+
+  const fetchVideoInfo = async (targetUrl: string) => {
+    if (!targetUrl || !targetUrl.startsWith("http")) return;
+    setLoadingInfo(true);
+    setVideoInfo(null);
+    try {
+      const info: any = await invoke("get_video_info", { url: targetUrl });
+      setVideoInfo({
+        title: info.title || "Video Desconocido",
+        uploader: info.uploader || info.extractor_key || "Canal Desconocido",
+        thumbnail: info.thumbnail || "",
+        duration: info.duration_string || "--:--"
+      });
+    } catch (error) {
+      console.error("Error fetching video info", error);
+    } finally {
+      setLoadingInfo(false);
+    }
   };
 
   const handlePaste = async () => {
     try {
       const text = await navigator.clipboard.readText();
       setUrl(text);
+      fetchVideoInfo(text);
     } catch (err) {
       console.error("Failed to read clipboard contents: ", err);
+    }
+  };
+
+  const handleUrlChange = (e: any) => {
+    const newUrl = e.target.value;
+    setUrl(newUrl);
+    if (newUrl.startsWith("http")) {
+       fetchVideoInfo(newUrl);
     }
   };
 
@@ -108,13 +129,47 @@ function App() {
     }
   };
 
+  const [showHistory, setShowHistory] = useState(false);
+
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col font-sans select-none">
+    <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col font-sans select-none relative">
+      {/* History Modal */}
+      {showHistory && (
+        <div className="absolute inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50">
+              <h2 className="font-semibold text-lg flex items-center gap-2"><Clock size={18}/> Historial de Descargas</h2>
+              <button onClick={() => setShowHistory(false)} className="text-zinc-400 hover:text-white p-1 rounded-md hover:bg-zinc-800">
+                Cerrar
+              </button>
+            </div>
+            <div className="overflow-y-auto p-4 flex-1">
+              {history.length === 0 ? (
+                <p className="text-zinc-500 text-center py-8">No hay descargas recientes.</p>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {[...history].reverse().map((item, i) => (
+                    <div key={i} className="flex flex-col gap-1 p-3 bg-zinc-950 rounded-lg border border-zinc-800/50">
+                      <h4 className="font-medium text-sm text-zinc-200 line-clamp-1">{item.title}</h4>
+                      <div className="flex items-center gap-3 text-xs text-zinc-500">
+                        <span className="text-violet-400">{item.format.toUpperCase()}</span>
+                        <span>{item.quality}</span>
+                        <span>{new Date(item.date).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header (Draggable for Tauri) */}
       <div data-tauri-drag-region className="h-10 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-4 sticky top-0 z-50">
         <div className="flex items-center gap-2 pointer-events-none">
-          <div className="w-2.5 h-2.5 rounded-full bg-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.8)]"></div>
-          <h1 className="font-semibold tracking-wide text-xs text-zinc-300 uppercase">Universal Video Downloader - Motor yt-dlp</h1>
+          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
+          <h1 className="font-semibold tracking-wide text-xs text-zinc-300 uppercase">{engineStatus}</h1>
         </div>
       </div>
 
@@ -134,7 +189,7 @@ function App() {
               <span className="flex items-center gap-1 text-zinc-300">Facebook y más.</span>
             </div>
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg border border-zinc-700 transition-colors font-medium text-sm shadow-sm">
+          <button onClick={() => setShowHistory(true)} className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg border border-zinc-700 transition-colors font-medium text-sm shadow-sm">
             Ver Historial
           </button>
         </div>
@@ -147,7 +202,7 @@ function App() {
           <input 
             type="text" 
             value={url}
-            onChange={(e) => setUrl(e.target.value)}
+            onChange={handleUrlChange}
             placeholder="Pega la URL del video aquí (YouTube, TikTok, Twitter...)" 
             className="flex-1 bg-transparent border-none outline-none text-zinc-100 placeholder:text-zinc-600 py-4"
           />
@@ -170,16 +225,24 @@ function App() {
           {/* Preview Card */}
           <section className="md:col-span-5 bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex flex-col shadow-lg relative group">
             <div className="aspect-video bg-zinc-950 flex items-center justify-center relative overflow-hidden">
-              <MonitorPlay size={48} className="text-zinc-800" />
+              {videoInfo?.thumbnail ? (
+                <img src={videoInfo.thumbnail} alt="Video thumbnail" className="w-full h-full object-cover" />
+              ) : (
+                <MonitorPlay size={48} className={loadingInfo ? "text-violet-500 animate-pulse" : "text-zinc-800"} />
+              )}
               {/* Overlay on hover or when image is present */}
               <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 to-transparent opacity-60"></div>
               <div className="absolute bottom-2 right-2 bg-black/80 px-2 py-1 rounded text-xs text-zinc-300 font-mono flex items-center gap-1 border border-zinc-800">
-                <Clock size={12} /> --:--
+                <Clock size={12} /> {videoInfo?.duration || "--:--"}
               </div>
             </div>
             <div className="p-4 flex-1 flex flex-col gap-1">
-              <h3 className="font-semibold text-zinc-200 line-clamp-2 leading-tight">Esperando video...</h3>
-              <p className="text-sm text-zinc-500 mt-1">Autor / Canal</p>
+              <h3 className="font-semibold text-zinc-200 line-clamp-2 leading-tight">
+                {loadingInfo ? "Cargando información..." : (videoInfo?.title || "Esperando video...")}
+              </h3>
+              <p className="text-sm text-violet-400 font-medium mt-1">
+                {videoInfo?.uploader || "Autor / Canal"}
+              </p>
             </div>
           </section>
 
