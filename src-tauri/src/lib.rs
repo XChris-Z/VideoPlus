@@ -173,9 +173,6 @@ async fn get_video_info(app: AppHandle, url: String, browser: String) -> Result<
 
     if browser != "none" {
         cmd.arg("--cookies-from-browser").arg(&browser);
-        cmd.arg("--extractor-args").arg("youtube:player_client=web");
-    } else {
-        cmd.arg("--extractor-args").arg("youtube:player_client=android,web");
     }
 
     let output = cmd.arg(&url)
@@ -232,9 +229,6 @@ async fn start_download(
 
     if browser != "none" {
         cmd.arg("--cookies-from-browser").arg(&browser);
-        cmd.arg("--extractor-args").arg("youtube:player_client=web");
-    } else {
-        cmd.arg("--extractor-args").arg("youtube:player_client=android,web");
     }
 
     if !playlist {
@@ -247,10 +241,18 @@ async fn start_download(
         cmd.arg("-x").arg("--audio-format").arg("mp3").arg("--audio-quality").arg("0");
     } else {
         match quality.as_str() {
-            "2160p" => cmd.arg("-f").arg("bestvideo[height<=2160]+bestaudio/best"),
-            "1080p" => cmd.arg("-f").arg("bestvideo[height<=1080]+bestaudio/best"),
-            "720p" => cmd.arg("-f").arg("bestvideo[height<=720]+bestaudio/best"),
-            _ => cmd.arg("-f").arg("bestvideo+bestaudio/best"),
+            "2160p" => {
+                cmd.arg("-S").arg("res:2160,ext:mp4:m4a");
+            }
+            "1080p" => {
+                cmd.arg("-S").arg("res:1080,ext:mp4:m4a");
+            }
+            "720p" => {
+                cmd.arg("-S").arg("res:720,ext:mp4:m4a");
+            }
+            _ => {
+                cmd.arg("-S").arg("res,ext:mp4:m4a");
+            }
         };
     }
 

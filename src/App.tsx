@@ -149,7 +149,7 @@ function App() {
         if (response.ok) {
           const data = await response.json();
           const remoteTag = data.tag_name || "";
-          const currentVersion = "v1.0.13";
+          const currentVersion = "v1.0.14";
           
           if (remoteTag && remoteTag !== currentVersion) {
             updateFound = true;
@@ -165,7 +165,7 @@ function App() {
       }
 
       if (!updateFound) {
-        setEngineStatus("Ya tienes la última versión (v1.0.13) ✅");
+        setEngineStatus("Ya tienes la última versión (v1.0.14) ✅");
       }
     } catch (e: any) {
       console.error(e);
@@ -408,7 +408,7 @@ function App() {
   const [showHistory, setShowHistory] = useState(false);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col font-sans select-none relative overflow-hidden">
+    <div className="h-screen max-h-screen bg-zinc-950 text-zinc-50 flex flex-col font-sans select-none relative overflow-hidden">
       <AnimatePresence>
         {/* Non-invasive Notification */}
         {showNotification && (
@@ -468,7 +468,7 @@ function App() {
                 </div>
                 <div>
                   <h3 className="font-bold text-zinc-100 text-lg">VideoPlus</h3>
-                  <p className="text-xs text-zinc-400 font-mono">v1.0.13</p>
+                  <p className="text-xs text-zinc-400 font-mono">v1.0.14</p>
                 </div>
               </div>
               
@@ -588,7 +588,7 @@ function App() {
       </AnimatePresence>
 
       {/* Header (Draggable for Tauri) */}
-      <div data-tauri-drag-region className="h-10 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-4 sticky top-0 z-50">
+      <div data-tauri-drag-region className="h-10 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-4 sticky top-0 z-50 shrink-0">
         <div className="flex items-center gap-2 pointer-events-none">
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
           <h1 className="font-semibold tracking-wide text-xs text-zinc-300 uppercase">{engineStatus}</h1>
@@ -598,23 +598,23 @@ function App() {
         </button>
       </div>
 
-      <main className="flex-1 overflow-y-auto p-6 flex flex-col gap-6 max-w-[1200px] mx-auto w-full">
+      <main className="flex-1 min-h-0 overflow-y-auto px-6 py-3.5 flex flex-col gap-3.5 max-w-[1200px] mx-auto w-full">
         
         {/* BIG TITLE & DESCRIPTION */}
-        <div className="flex justify-between items-start mb-2">
-          <div className="flex flex-col gap-2">
-            <h1 className="text-4xl font-extrabold tracking-tight text-white uppercase drop-shadow-md">
+        <div className="flex justify-between items-center mb-0.5">
+          <div className="flex flex-col gap-1">
+            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white uppercase drop-shadow-md">
               Universal Video Downloader
             </h1>
-            <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-400">
+            <div className="flex flex-wrap items-center gap-2 text-xs md:text-sm text-zinc-400">
               <span>Descarga de</span>
-              <span className="flex items-center gap-1 text-zinc-300"><Globe size={14}/> YouTube,</span>
+              <span className="flex items-center gap-1 text-zinc-300"><Globe size={13}/> YouTube,</span>
               <span className="flex items-center gap-1 text-zinc-300">Instagram,</span>
               <span className="flex items-center gap-1 text-zinc-300">X/Twitter,</span>
               <span className="flex items-center gap-1 text-zinc-300">Facebook y más.</span>
             </div>
           </div>
-          <div className="flex flex-col gap-2 items-end">
+          <div className="flex flex-col gap-1.5 items-end">
             <div className="flex gap-2">
               <button onClick={handleUpdateEngines} disabled={updatingEngines} className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md transition-all text-xs shadow-sm disabled:opacity-50 border border-zinc-700 cursor-pointer active:scale-95">
                 {updatingEngines ? "Actualizando..." : "Actualizar Motor"}
@@ -623,39 +623,39 @@ function App() {
                 {updatingApp ? "Buscando..." : "Actualizar App"}
               </button>
             </div>
-            <button onClick={() => setShowHistory(true)} className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg border border-zinc-700 transition-all font-medium text-sm shadow-sm w-full justify-center cursor-pointer active:scale-95">
+            <button onClick={() => setShowHistory(true)} className="flex items-center gap-2 px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-md border border-zinc-700 transition-all font-medium text-xs shadow-sm w-full justify-center cursor-pointer active:scale-95">
               Ver Historial
             </button>
           </div>
         </div>
 
         {/* URL Input Section */}
-        <section className={`bg-zinc-900 p-1 rounded-xl border border-zinc-800 flex items-center shadow-lg transition-colors ${getPlatformGlow()}`}>
-          <div className="px-4 text-zinc-500">
-            <Film size={20} />
+        <section className={`bg-zinc-900 px-3 py-0.5 rounded-xl border border-zinc-800 flex items-center shadow-lg transition-colors ${getPlatformGlow()}`}>
+          <div className="px-2 text-zinc-500">
+            <Film size={18} />
           </div>
           <input 
             type="text" 
             value={url}
             onChange={handleUrlChange}
             placeholder="Pega la URL del video aquí (YouTube, TikTok, Twitter...)" 
-            className="flex-1 bg-transparent border-none outline-none text-zinc-100 placeholder:text-zinc-600 py-4"
+            className="flex-1 bg-transparent border-none outline-none text-zinc-100 placeholder:text-zinc-600 py-2.5 text-sm"
           />
           {url && (
-            <div className="px-3 flex items-center gap-1 text-xs font-medium text-emerald-500 bg-emerald-500/10 rounded-full py-1 mr-3">
-              <CheckCircle2 size={14} /> Listo
+            <div className="px-2.5 flex items-center gap-1 text-xs font-medium text-emerald-500 bg-emerald-500/10 rounded-full py-1 mr-2">
+              <CheckCircle2 size={13} /> Listo
             </div>
           )}
           <button 
             onClick={() => { setUrl(""); setVideoInfo(null); setInfoError(""); setProgress(0); setDownloadError(""); }}
-            className="flex items-center gap-2 px-4 py-2 bg-zinc-800/50 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 rounded-lg mr-2 transition-all font-medium text-sm cursor-pointer active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800/50 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 rounded-lg mr-2 transition-all font-medium text-xs cursor-pointer active:scale-95"
           >
-            <X size={16} /> Limpiar
+            <X size={14} /> Limpiar
           </button>
           <button 
             type="button"
             onClick={handlePaste}
-            className={`flex items-center gap-2 px-5 py-2 rounded-lg mr-1 transition-all font-medium text-sm cursor-pointer active:scale-95 border ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg mr-1 transition-all font-medium text-xs cursor-pointer active:scale-95 border ${
               pasteStatus === 'pasted'
                 ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.3)]' 
                 : pasteStatus === 'empty'
@@ -666,17 +666,17 @@ function App() {
           >
             {pasteStatus === 'pasted' ? (
               <>
-                <CheckCircle2 size={16} className="text-emerald-400" />
+                <CheckCircle2 size={14} className="text-emerald-400" />
                 <span className="font-semibold text-emerald-300">¡Pegado!</span>
               </>
             ) : pasteStatus === 'empty' ? (
               <>
-                <AlertCircle size={16} className="text-amber-400" />
+                <AlertCircle size={14} className="text-amber-400" />
                 <span className="font-semibold text-amber-300">¡Vacío!</span>
               </>
             ) : (
               <>
-                <ClipboardPaste size={16} className="text-violet-400" />
+                <ClipboardPaste size={14} className="text-violet-400" />
                 <span>Pegar</span>
               </>
             )}
@@ -684,75 +684,75 @@ function App() {
         </section>
 
         {/* Layout Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
           
           {/* Preview Card */}
           <section className="md:col-span-5 bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex flex-col shadow-lg relative group">
-            <div className="aspect-video bg-zinc-950 flex items-center justify-center relative overflow-hidden">
+            <div className="aspect-video max-h-[160px] bg-zinc-950 flex items-center justify-center relative overflow-hidden">
               {videoInfo?.thumbnail ? (
                 <img src={videoInfo.thumbnail} alt="Video thumbnail" className="w-full h-full object-cover" />
               ) : (
-                <MonitorPlay size={48} className={loadingInfo ? "text-violet-500 animate-pulse" : "text-zinc-800"} />
+                <MonitorPlay size={44} className={loadingInfo ? "text-violet-500 animate-pulse" : "text-zinc-800"} />
               )}
               {/* Overlay on hover or when image is present */}
               <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 to-transparent opacity-60"></div>
-              <div className="absolute bottom-2 right-2 bg-black/80 px-2 py-1 rounded text-xs text-zinc-300 font-mono flex items-center gap-1 border border-zinc-800">
-                <Clock size={12} /> {videoInfo?.duration || "--:--"}
+              <div className="absolute bottom-2 right-2 bg-black/80 px-2 py-0.5 rounded text-[11px] text-zinc-300 font-mono flex items-center gap-1 border border-zinc-800">
+                <Clock size={11} /> {videoInfo?.duration || "--:--"}
               </div>
             </div>
-            <div className="p-4 flex-1 flex flex-col gap-1">
-              <h3 className="font-semibold text-zinc-200 line-clamp-2 leading-tight">
+            <div className="p-3 flex-1 flex flex-col gap-1">
+              <h3 className="font-semibold text-xs md:text-sm text-zinc-200 line-clamp-2 leading-tight">
                 {loadingInfo ? "Cargando información..." : (videoInfo?.title || "Esperando video...")}
               </h3>
-              <div className="flex items-center justify-between mt-1">
-                <p className="text-sm text-violet-400 font-medium">
+              <div className="flex items-center justify-between mt-0.5">
+                <p className="text-xs text-violet-400 font-medium">
                   {videoInfo?.uploader || "Autor / Canal"}
                 </p>
                 {history.some(h => h.url === url) && (
-                  <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30">Ya descargado</span>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30">Ya descargado</span>
                 )}
               </div>
               {infoError && (
-                <div className="mt-2 text-xs text-red-400 bg-red-500/10 p-2 rounded border border-red-500/20 max-h-24 overflow-y-auto">
-                  <span className="font-semibold flex items-center gap-1"><AlertCircle size={14}/> Error de extracción:</span>
-                  <span className="font-mono mt-1 opacity-80">{infoError}</span>
+                <div className="mt-1 text-xs text-red-400 bg-red-500/10 p-2 rounded border border-red-500/20 max-h-20 overflow-y-auto">
+                  <span className="font-semibold flex items-center gap-1"><AlertCircle size={13}/> Error de extracción:</span>
+                  <span className="font-mono mt-0.5 opacity-80 text-[11px]">{infoError}</span>
                 </div>
               )}
             </div>
           </section>
 
           {/* Options Panel */}
-          <section className="md:col-span-7 bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg flex flex-col gap-5">
-            <div className="flex items-center gap-2 pb-3 border-b border-zinc-800/50">
-              <Settings size={18} className="text-violet-500" />
-              <h2 className="font-semibold text-zinc-200">Configuración de Descarga</h2>
+          <section className="md:col-span-7 bg-zinc-900 border border-zinc-800 rounded-xl p-3.5 shadow-lg flex flex-col gap-3">
+            <div className="flex items-center gap-2 pb-2 border-b border-zinc-800/50">
+              <Settings size={16} className="text-violet-500" />
+              <h2 className="font-semibold text-sm text-zinc-200">Configuración de Descarga</h2>
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Formato</label>
-                <div className="flex bg-zinc-950 rounded-lg p-1 border border-zinc-800">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Formato</label>
+                <div className="flex bg-zinc-950 rounded-lg p-0.5 border border-zinc-800">
                   <button 
                     onClick={() => setFormat('video')}
-                    className={`flex-1 py-2 rounded-md text-sm font-medium flex items-center justify-center gap-2 transition-all ${format === 'video' ? 'bg-violet-600 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    className={`flex-1 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${format === 'video' ? 'bg-violet-600 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'}`}
                   >
-                    <Video size={16} /> Video
+                    <Video size={14} /> Video
                   </button>
                   <button 
                     onClick={() => setFormat('audio')}
-                    className={`flex-1 py-2 rounded-md text-sm font-medium flex items-center justify-center gap-2 transition-all ${format === 'audio' ? 'bg-violet-600 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    className={`flex-1 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${format === 'audio' ? 'bg-violet-600 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'}`}
                   >
-                    <Music size={16} /> Audio
+                    <Music size={14} /> Audio
                   </button>
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Calidad / Resol.</label>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Calidad / Resol.</label>
                 <select 
                   value={quality} 
                   onChange={(e) => setQuality(e.target.value)}
-                  className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-zinc-200 outline-none focus:border-violet-500 transition-colors"
+                  className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 outline-none focus:border-violet-500 transition-colors"
                 >
                   <option value="best">Máxima Posible (Best)</option>
                   <option value="2160p">4K (2160p)</option>
@@ -763,54 +763,54 @@ function App() {
               </div>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Destino</label>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Destino</label>
               <div className="flex gap-2">
                 <input 
                   type="text" 
                   readOnly 
                   value={destFolder}
-                  className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 text-sm text-zinc-400 outline-none"
+                  className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-zinc-400 outline-none"
                 />
                 <button 
                   onClick={handleSelectFolder}
-                  className="p-2.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 transition-all text-zinc-300 cursor-pointer active:scale-95"
+                  className="p-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 transition-all text-zinc-300 cursor-pointer active:scale-95"
                   title="Seleccionar carpeta"
                 >
-                  <Folder size={18} />
+                  <Folder size={15} />
                 </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mt-1">
+            <div className="grid grid-cols-2 gap-3 mt-0.5">
               <div 
-                className={`flex items-center justify-between p-3 rounded-lg border transition-all duration-300 cursor-pointer group select-none ${playlist ? 'bg-violet-900/30 border-violet-500/50 shadow-[0_0_15px_rgba(139,92,246,0.15)]' : 'bg-zinc-950/50 border-zinc-800/50 hover:border-zinc-700'}`}
+                className={`flex items-center justify-between p-2 rounded-lg border transition-all duration-300 cursor-pointer group select-none ${playlist ? 'bg-violet-900/30 border-violet-500/50 shadow-[0_0_15px_rgba(139,92,246,0.15)]' : 'bg-zinc-950/50 border-zinc-800/50 hover:border-zinc-700'}`}
                 onClick={() => setPlaylist(!playlist)}
               >
-                <div className="flex items-center gap-3">
-                  <div className={`w-11 h-6 rounded-full p-1 transition-colors duration-300 ease-in-out flex items-center ${playlist ? 'bg-violet-500' : 'bg-zinc-700'}`}>
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-300 ease-in-out flex items-center ${playlist ? 'bg-violet-500' : 'bg-zinc-700'}`}>
                     <motion.div 
                       layout
                       initial={false}
-                      animate={{ x: playlist ? 20 : 0 }}
+                      animate={{ x: playlist ? 16 : 0 }}
                       transition={{ type: "spring", stiffness: 500, damping: 30 }}
                       className="w-4 h-4 bg-white rounded-full shadow-md"
                     />
                   </div>
-                  <span className={`text-sm transition-colors duration-300 ${playlist ? 'text-violet-100 font-medium' : 'text-zinc-400 group-hover:text-zinc-300'}`}>Playlist Completa</span>
+                  <span className={`text-xs transition-colors duration-300 ${playlist ? 'text-violet-100 font-medium' : 'text-zinc-400 group-hover:text-zinc-300'}`}>Playlist</span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider whitespace-nowrap">Cookies:</label>
+                <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider whitespace-nowrap">Cookies:</label>
                 <select 
                   value={browser} 
                   onChange={(e) => setBrowser(e.target.value)}
                   className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-violet-500 transition-colors"
                 >
+                  <option value="none">Ninguno</option>
                   <option value="firefox">Firefox</option>
                   <option value="chrome">Chrome</option>
                   <option value="edge">Edge</option>
-                  <option value="none">Ninguno</option>
                 </select>
               </div>
             </div>
@@ -819,17 +819,17 @@ function App() {
         </div>
 
         {/* Action Section */}
-        <section className="flex flex-col gap-4 mt-2">
+        <section className="flex flex-col gap-2.5 mt-0.5">
           {/* Permanent Last Download Card */}
           {lastDownload && !downloading && (
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex items-center justify-between p-4 bg-zinc-900/80 border border-emerald-500/25 rounded-2xl backdrop-blur-xl shadow-lg hover:border-emerald-500/40 transition-colors w-full min-w-0"
+              className="flex items-center justify-between p-3.5 bg-zinc-900/80 border border-emerald-500/25 rounded-2xl backdrop-blur-xl shadow-lg hover:border-emerald-500/40 transition-colors w-full min-w-0"
             >
-              <div className="flex items-center gap-3.5 overflow-hidden pr-3 min-w-0 flex-1">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0 shadow-inner">
-                  <CheckCircle2 size={20} className="text-emerald-400" />
+              <div className="flex items-center gap-3 overflow-hidden pr-2 min-w-0 flex-1">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0 shadow-inner">
+                  <CheckCircle2 size={18} className="text-emerald-400" />
                 </div>
                 <div className="flex flex-col min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -873,22 +873,22 @@ function App() {
                     });
                   }
                 }}
-                className="px-3.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-semibold border border-zinc-700 transition-all shrink-0 cursor-pointer active:scale-95 flex items-center gap-2 shadow-sm ml-2"
+                className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-semibold border border-zinc-700 transition-all shrink-0 cursor-pointer active:scale-95 flex items-center gap-1.5 shadow-sm ml-2"
                 title="Abrir carpeta de destino"
               >
-                <Folder size={15} className="text-emerald-400" /> Abrir Carpeta
+                <Folder size={14} className="text-emerald-400" /> Abrir Carpeta
               </button>
             </motion.div>
           )}
 
           <AnimatePresence>
-            {(downloading || progress > 0 || downloadError) && (
+            {(downloading || downloadError) && (
               <motion.div 
                 initial={{ opacity: 0, y: -20, scale: 0.95 }} 
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -10, scale: 0.95 }}
                 transition={{ type: "spring", stiffness: 350, damping: 25 }}
-                className="flex flex-col gap-3 bg-zinc-900/80 backdrop-blur-xl p-5 rounded-2xl border border-white/5 shadow-xl"
+                className="flex flex-col gap-3 bg-zinc-900/80 backdrop-blur-xl p-4 rounded-2xl border border-white/5 shadow-xl"
               >
               {downloadError ? (
                 <div className="bg-zinc-950 border border-red-500/30 rounded-xl overflow-hidden shadow-lg">
@@ -960,13 +960,13 @@ function App() {
           <button 
             onClick={handleDownload}
             disabled={downloading}
-            className={`w-full py-5 rounded-xl font-bold text-lg tracking-wide flex items-center justify-center gap-3 transition-all ${
+            className={`w-full py-3.5 md:py-4 rounded-xl font-bold text-base md:text-lg tracking-wide flex items-center justify-center gap-3 transition-all shrink-0 ${
               downloading 
               ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
               : `text-white active:scale-[0.99] ${getPlatformColor()}`
             }`}
           >
-            <Download size={24} />
+            <Download size={22} />
             {downloading ? "DESCARGANDO..." : "INICIAR DESCARGA"}
           </button>
         </section>
@@ -974,7 +974,7 @@ function App() {
       </main>
 
       {/* Footer */}
-      <footer className="h-10 bg-zinc-950 border-t border-zinc-900 flex items-center justify-between px-4 text-xs">
+      <footer className="h-9 bg-zinc-950 border-t border-zinc-900 flex items-center justify-between px-4 text-xs shrink-0">
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full shadow-[0_0_5px_currentColor] ${engineStatus.includes('Listo') ? 'bg-emerald-500 text-emerald-500' : 'bg-amber-500 text-amber-500'}`}></div>
           <span className="text-zinc-500 font-mono">{engineStatus}</span>
