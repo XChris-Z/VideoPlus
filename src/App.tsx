@@ -380,6 +380,7 @@ function App() {
                   ))}
                 </div>
               )}
+            </div>
             </motion.div>
           </motion.div>
         )}
