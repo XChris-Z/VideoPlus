@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { check } from '@tauri-apps/plugin-updater';
@@ -249,31 +249,53 @@ function App() {
   const [showHistory, setShowHistory] = useState(false);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col font-sans select-none relative">
-      {/* Non-invasive Notification */}
-      {showNotification && (
-        <div 
-          className="fixed inset-0 z-[200] flex items-end justify-center pb-8 pointer-events-auto" 
-          onClick={() => setShowNotification(false)}
-        >
+    <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col font-sans select-none relative overflow-hidden">
+      <AnimatePresence>
+        {/* Non-invasive Notification */}
+        {showNotification && (
           <motion.div 
-            initial={{ opacity: 0, y: 50, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.9 }}
-            className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-100 px-6 py-4 rounded-2xl shadow-[0_10px_40px_rgba(16,185,129,0.15)] flex items-center gap-4 backdrop-blur-md cursor-pointer hover:bg-emerald-500/20 transition-colors"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-end justify-center pb-8 pointer-events-auto" 
+            onClick={() => setShowNotification(false)}
           >
-            <CheckCircle2 className="text-emerald-400" size={24} />
-            <div>
-              <h3 className="font-semibold text-emerald-300">¡Descarga Completada!</h3>
-              <p className="text-xs opacity-80">Haz clic en cualquier parte para cerrar esto.</p>
-            </div>
+            <motion.div 
+              initial={{ opacity: 0, y: 50, scale: 0.8 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 30, scale: 0.9 }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              className="bg-emerald-950/70 border border-emerald-500/30 text-emerald-100 px-6 py-4 rounded-2xl shadow-[0_10px_40px_rgba(16,185,129,0.2)] flex items-center gap-4 backdrop-blur-xl cursor-pointer hover:bg-emerald-900/70 transition-colors"
+            >
+              <CheckCircle2 className="text-emerald-400" size={24} />
+              <div>
+                <h3 className="font-semibold text-emerald-300">¡Descarga Completada!</h3>
+                <p className="text-xs opacity-80">Haz clic en cualquier parte para cerrar esto.</p>
+              </div>
+            </motion.div>
           </motion.div>
-        </div>
-      )}
-      {/* About Modal */}
-      {showAbout && (
-        <div className="absolute inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowAbout(false)}>
-          <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-sm flex flex-col shadow-2xl overflow-hidden pointer-events-auto" onClick={e => e.stopPropagation()}>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {/* About Modal */}
+        {showAbout && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="absolute inset-0 z-[100] bg-black/40 backdrop-blur-md flex items-center justify-center p-4" 
+            onClick={() => setShowAbout(false)}
+          >
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: "spring", stiffness: 350, damping: 25 }}
+              className="bg-zinc-900/80 backdrop-blur-2xl border border-white/10 rounded-2xl w-full max-w-sm flex flex-col shadow-2xl overflow-hidden pointer-events-auto" 
+              onClick={e => e.stopPropagation()}
+            >
             <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50">
               <h2 className="font-semibold text-lg flex items-center gap-2"><Info size={18} className="text-violet-400"/> Información y Versiones</h2>
               <button onClick={() => setShowAbout(false)} className="text-zinc-400 hover:text-white p-1 rounded-md hover:bg-zinc-800 cursor-pointer">
@@ -309,14 +331,28 @@ function App() {
                 Desarrollado por XChris-Z
               </p>
             </div>
-          </div>
-        </div>
-      )}
+          </motion.div>
+        </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* History Modal */}
-      {showHistory && (
-        <div className="absolute inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl overflow-hidden">
+      <AnimatePresence>
+        {/* History Modal */}
+        {showHistory && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="absolute inset-0 z-[100] bg-black/40 backdrop-blur-md flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: "spring", stiffness: 350, damping: 25 }}
+              className="bg-zinc-900/80 backdrop-blur-2xl border border-white/10 rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl overflow-hidden"
+            >
             <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50">
               <h2 className="font-semibold text-lg flex items-center gap-2"><Clock size={18}/> Historial de Descargas</h2>
               <button onClick={() => setShowHistory(false)} className="text-zinc-400 hover:text-white p-1 rounded-md hover:bg-zinc-800">
@@ -344,10 +380,10 @@ function App() {
                   ))}
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Header (Draggable for Tauri) */}
       <div data-tauri-drag-region className="h-10 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-4 sticky top-0 z-50">
@@ -523,19 +559,20 @@ function App() {
 
             <div className="grid grid-cols-2 gap-4 mt-1">
               <div 
-                className={`flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer group select-none ${playlist ? 'bg-violet-900/20 border-violet-500/50 shadow-[0_0_15px_rgba(139,92,246,0.1)]' : 'bg-zinc-950/50 border-zinc-800/50 hover:border-zinc-700'}`}
+                className={`flex items-center justify-between p-3 rounded-lg border transition-all duration-300 cursor-pointer group select-none ${playlist ? 'bg-violet-900/30 border-violet-500/50 shadow-[0_0_15px_rgba(139,92,246,0.15)]' : 'bg-zinc-950/50 border-zinc-800/50 hover:border-zinc-700'}`}
                 onClick={() => setPlaylist(!playlist)}
               >
                 <div className="flex items-center gap-3">
-                  <div className={`w-10 h-6 rounded-full p-1 transition-colors duration-300 ease-in-out flex items-center ${playlist ? 'bg-violet-600' : 'bg-zinc-700'}`}>
+                  <div className={`w-11 h-6 rounded-full p-1 transition-colors duration-300 ease-in-out flex items-center ${playlist ? 'bg-violet-500' : 'bg-zinc-700'}`}>
                     <motion.div 
                       layout
                       initial={false}
-                      animate={{ x: playlist ? 16 : 0 }}
-                      className="w-4 h-4 bg-white rounded-full shadow-sm"
+                      animate={{ x: playlist ? 20 : 0 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                      className="w-4 h-4 bg-white rounded-full shadow-md"
                     />
                   </div>
-                  <span className={`text-sm transition-colors ${playlist ? 'text-violet-200 font-medium' : 'text-zinc-300 group-hover:text-zinc-200'}`}>Playlist Completa</span>
+                  <span className={`text-sm transition-colors duration-300 ${playlist ? 'text-violet-100 font-medium' : 'text-zinc-400 group-hover:text-zinc-300'}`}>Playlist Completa</span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -558,12 +595,15 @@ function App() {
 
         {/* Action Section */}
         <section className="flex flex-col gap-4 mt-2">
-          {(downloading || progress > 0 || downloadError) && (
-            <motion.div 
-              initial={{ opacity: 0, y: -10 }} 
-              animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col gap-3 bg-zinc-900 p-5 rounded-xl border border-zinc-800 shadow-lg"
-            >
+          <AnimatePresence>
+            {(downloading || progress > 0 || downloadError) && (
+              <motion.div 
+                initial={{ opacity: 0, y: -20, scale: 0.95 }} 
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                className="flex flex-col gap-3 bg-zinc-900/80 backdrop-blur-xl p-5 rounded-2xl border border-white/5 shadow-xl"
+              >
               {downloadError ? (
                 <div className="bg-zinc-950 border border-red-500/30 rounded-xl overflow-hidden shadow-lg">
                   <div className="bg-red-500/10 px-4 py-2 flex items-center justify-between border-b border-red-500/20">
@@ -597,10 +637,12 @@ function App() {
                         transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
                       />
                     ) : (
-                      <motion.div 
-                        className={`h-full ${progress === 100 ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)]' : getPlatformProgressColor()}`}
-                        style={{ width: `${progress}%` }}
-                      />
+                        <motion.div 
+                          className={`h-full ${progress === 100 ? 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.8)]' : getPlatformProgressColor()}`}
+                          initial={{ width: 0 }}
+                          animate={{ width: `${progress}%` }}
+                          transition={{ type: "spring", stiffness: 100, damping: 20 }}
+                        />
                     )}
                   </div>
 
@@ -615,6 +657,7 @@ function App() {
               )}
             </motion.div>
           )}
+          </AnimatePresence>
 
           <button 
             onClick={handleDownload}
