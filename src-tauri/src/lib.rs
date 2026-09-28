@@ -14,10 +14,62 @@ struct DownloadProgress {
 #[derive(Clone, serde::Serialize)]
 struct VideoProgress {
     percent: f64,
+    downloaded: String,
     size: String,
     speed: String,
     eta: String,
     status: String,
+}
+
+#[tauri::command]
+fn read_clipboard() -> Result<String, String> {
+    // 1. Intentar con arboard (Win32 nativo) con reintentos en caso de bloqueo temporal
+    for _ in 0..3 {
+        if let Ok(mut cb) = arboard::Clipboard::new() {
+            if let Ok(text) = cb.get_text() {
+                let trimmed = text.trim();
+                if !trimmed.is_empty() {
+                    return Ok(trimmed.to_string());
+                }
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(40));
+    }
+
+    // 2. Respaldo PowerShell en Windows
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        if let Ok(output) = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-Command", "Get-Clipboard"])
+            .creation_flags(0x08000000)
+            .output() 
+        {
+            let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !s.is_empty() {
+                return Ok(s);
+            }
+        }
+    }
+
+    Err("Portapapeles vacío o no accesible".to_string())
+}
+
+#[tauri::command]
+fn open_folder(path: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        let mut cmd = std::process::Command::new("explorer");
+        cmd.arg(&path);
+        cmd.creation_flags(0x08000000);
+        let _ = cmd.spawn().map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(&path).spawn().map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -228,6 +280,7 @@ async fn start_download(
     let mut reader = BufReader::new(stdout).lines();
     let mut downloaded_something = false;
     let mut last_percent = 0.0;
+    let mut last_downloaded = String::new();
     let mut last_size = String::new();
 
     while let Ok(Some(line)) = reader.next_line().await {
@@ -254,26 +307,61 @@ async fn start_download(
                 }
             }
 
+            // Calcular el peso descargado actual
+            let mut downloaded = String::new();
+            if !size.is_empty() && percent > 0.0 {
+                let num_str: String = size.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+                let unit_str: String = size.chars().skip_while(|c| c.is_ascii_digit() || *c == '.').collect();
+                if let Ok(num) = num_str.parse::<f64>() {
+                    let current_downloaded = num * (percent / 100.0);
+                    downloaded = format!("{:.2}{}", current_downloaded, unit_str);
+                }
+            }
+
             last_percent = percent;
             if !size.is_empty() {
                 last_size = size.clone();
             }
+            if !downloaded.is_empty() {
+                last_downloaded = downloaded.clone();
+            }
 
             let _ = app.emit("download-progress", VideoProgress {
-                percent, size, speed, eta, status: "Descargando...".to_string(),
+                percent,
+                downloaded,
+                size,
+                speed,
+                eta,
+                status: "Descargando...".to_string(),
             });
         } else if line.contains("[merger]") || line.contains("Merging formats") {
             let _ = app.emit("download-progress", VideoProgress {
-                percent: last_percent, size: last_size.clone(), speed: "-".to_string(), eta: "-".to_string(), status: "Fusionando pistas...".to_string(),
+                percent: last_percent,
+                downloaded: last_downloaded.clone(),
+                size: last_size.clone(),
+                speed: "-".to_string(),
+                eta: "-".to_string(),
+                status: "Fusionando pistas...".to_string(),
             });
         } else if line.contains("has already been downloaded") {
             downloaded_something = true;
+            let completed_size = if !last_size.is_empty() { last_size.clone() } else { "Completado".to_string() };
             let _ = app.emit("download-progress", VideoProgress {
-                percent: 100.0, size: last_size.clone(), speed: "-".to_string(), eta: "-".to_string(), status: "Ya descargado".to_string(),
+                percent: 100.0,
+                downloaded: completed_size.clone(),
+                size: completed_size,
+                speed: "-".to_string(),
+                eta: "-".to_string(),
+                status: "Ya descargado".to_string(),
             });
         } else if line.contains("[ExtractInfo]") || line.contains("Extracting URL") {
             let _ = app.emit("download-progress", VideoProgress {
-                percent: last_percent, size: last_size.clone(), speed: "-".to_string(), eta: "-".to_string(), status: "Extrayendo metadatos...".to_string(),
+                percent: last_percent,
+                downloaded: last_downloaded.clone(),
+                size: last_size.clone(),
+                speed: "-".to_string(),
+                eta: "-".to_string(),
+                status: "Extrayendo metadatos...".to_string(),
             });
         }
     }
@@ -282,8 +370,14 @@ async fn start_download(
     let last_error = err_task.await.unwrap_or_default();
 
     if status.success() || (playlist && downloaded_something) {
+        let final_size = if !last_size.is_empty() { last_size.clone() } else { "Completado".to_string() };
         let _ = app.emit("download-progress", VideoProgress {
-            percent: 100.0, size: "Completado".to_string(), speed: "-".to_string(), eta: "00:00".to_string(), status: "Completado".to_string(),
+            percent: 100.0,
+            downloaded: final_size.clone(),
+            size: final_size,
+            speed: "-".to_string(),
+            eta: "00:00".to_string(),
+            status: "Completado".to_string(),
         });
         Ok(())
     } else {
@@ -334,7 +428,9 @@ pub fn run() {
             start_download,
             get_history,
             save_history,
-            get_engine_versions
+            get_engine_versions,
+            read_clipboard,
+            open_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -4225,6 +4225,7 @@ dependencies = [
 name = "tauri-app"
 version = "0.1.0"
 dependencies = [
+ "arboard",
  "futures-util",
  "reqwest 0.12.28",
  "serde",

@@ -12,6 +12,8 @@
     "shell:default",
     "updater:default",
     "process:default",
-    "clipboard-manager:default"
+    "clipboard-manager:default",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text"
   ]
 }

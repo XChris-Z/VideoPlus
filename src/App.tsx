@@ -31,7 +31,15 @@ function App() {
   const [infoError, setInfoError] = useState("");
   const [progress, setProgress] = useState(0);
   const [playlist, setPlaylist] = useState(false);
-  const [stats, setStats] = useState({ size: "0 MB", speed: "0 MB/s", eta: "--:--", status: "" });
+  const [stats, setStats] = useState({ downloaded: "", size: "0 MB", speed: "0 MB/s", eta: "--:--", status: "" });
+  const [lastDownload, setLastDownload] = useState<any>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('vplus_last_download') || 'null');
+    } catch {
+      return null;
+    }
+  });
+  const [pasteStatus, setPasteStatus] = useState<'idle' | 'pasted' | 'empty'>('idle');
   const [engineStatus, setEngineStatus] = useState("Verificando motores...");
   const [history, setHistory] = useState<any[]>([]);
 
@@ -53,11 +61,29 @@ function App() {
     const unlistenVideo = listen<any>("download-progress", (event) => {
       const p = event.payload;
       setProgress(p.percent);
-      setStats({ size: p.size, speed: p.speed, eta: p.eta, status: p.status });
+      setStats({
+        downloaded: p.downloaded || "",
+        size: p.size,
+        speed: p.speed,
+        eta: p.eta,
+        status: p.status
+      });
       if (p.percent === 100) {
         setDownloading(false);
         saveToHistory();
         setShowNotification(true);
+        const current = activeDownloadRef.current;
+        const finalInfo = {
+          title: current.title || url,
+          url: current.url || url,
+          size: p.size && p.size !== "Completado" ? p.size : (p.downloaded || stats.size),
+          format: current.format,
+          quality: current.quality,
+          destFolder: localStorage.getItem('vplus_destFolder') || destFolder,
+          date: new Date().toISOString()
+        };
+        setLastDownload(finalInfo);
+        localStorage.setItem('vplus_last_download', JSON.stringify(finalInfo));
       }
     });
 
@@ -70,7 +96,14 @@ function App() {
 
     // Cargar historial
     invoke("get_history").then((res: any) => {
-      try { setHistory(JSON.parse(res)); } catch(e) {}
+      try { 
+        const parsed = JSON.parse(res);
+        setHistory(parsed);
+        if (!localStorage.getItem('vplus_last_download') && Array.isArray(parsed) && parsed.length > 0) {
+          const last = parsed[parsed.length - 1];
+          setLastDownload(last);
+        }
+      } catch(e) {}
     });
 
     // Cargar directorio de descargas por defecto si está vacío
@@ -116,7 +149,7 @@ function App() {
         if (response.ok) {
           const data = await response.json();
           const remoteTag = data.tag_name || "";
-          const currentVersion = "v1.0.12";
+          const currentVersion = "v1.0.13";
           
           if (remoteTag && remoteTag !== currentVersion) {
             updateFound = true;
@@ -132,7 +165,7 @@ function App() {
       }
 
       if (!updateFound) {
-        setEngineStatus("Ya tienes la última versión (v1.0.12) ✅");
+        setEngineStatus("Ya tienes la última versión (v1.0.13) ✅");
       }
     } catch (e: any) {
       console.error(e);
@@ -181,7 +214,9 @@ function App() {
         format: current.format,
         quality: current.quality,
         date: new Date().toISOString(),
-        title: current.title || current.url
+        title: current.title || current.url,
+        size: stats.size && stats.size !== "0 MB" && stats.size !== "Completado" && stats.size !== "Calculando..." ? stats.size : (stats.downloaded || undefined),
+        destFolder: localStorage.getItem('vplus_destFolder') || destFolder
       };
 
       const newHistory = [...currentHistory, newEntry];
@@ -237,28 +272,54 @@ function App() {
   const handlePaste = async () => {
     try {
       let text = "";
+      // 1. Lectura nativa directa con Win32 API en Rust (arboard + PowerShell fallback) - 100% inmune a restricciones de Edge WebView2
       try {
-        text = await readText();
-      } catch (tauriErr) {
-        console.warn("Tauri clipboard plugin fallo, usando fallback de navegador:", tauriErr);
-        if (navigator.clipboard && navigator.clipboard.readText) {
-          text = await navigator.clipboard.readText();
+        const nativeText = await invoke<string>("read_clipboard");
+        if (nativeText && nativeText.trim()) {
+          text = nativeText.trim();
+        }
+      } catch (nativeErr) {
+        console.warn("Lectura nativa Rust aviso:", nativeErr);
+      }
+
+      // 2. Respaldo plugin clipboard-manager de Tauri
+      if (!text) {
+        try {
+          const tauriText = await readText();
+          if (tauriText && tauriText.trim()) {
+            text = tauriText.trim();
+          }
+        } catch (tauriErr) {
+          console.warn("Tauri clipboard plugin fallo:", tauriErr);
         }
       }
+
+      // 3. Respaldo API de navegador
       if (!text && navigator.clipboard && navigator.clipboard.readText) {
         try {
-          text = await navigator.clipboard.readText();
+          const webText = await navigator.clipboard.readText();
+          if (webText && webText.trim()) {
+            text = webText.trim();
+          }
         } catch {}
       }
+
       if (text) {
         const clean = text.trim();
         setUrl(clean);
+        setPasteStatus('pasted');
+        setTimeout(() => setPasteStatus('idle'), 2000);
         if (clean.startsWith("http")) {
           fetchVideoInfo(clean, browser);
         }
+      } else {
+        setPasteStatus('empty');
+        setTimeout(() => setPasteStatus('idle'), 2000);
       }
     } catch (err) {
       console.error("Failed to read clipboard contents: ", err);
+      setPasteStatus('empty');
+      setTimeout(() => setPasteStatus('idle'), 2000);
     }
   };
 
@@ -296,7 +357,7 @@ function App() {
     setDownloading(true);
     setDownloadError("");
     setProgress(0);
-    setStats({ size: "Calculando...", speed: "-", eta: "--:--", status: "Iniciando..." });
+    setStats({ downloaded: "", size: "Calculando...", speed: "-", eta: "--:--", status: "Iniciando..." });
 
     try {
       await invoke("start_download", {
@@ -407,7 +468,7 @@ function App() {
                 </div>
                 <div>
                   <h3 className="font-bold text-zinc-100 text-lg">VideoPlus</h3>
-                  <p className="text-xs text-zinc-400 font-mono">v1.0.12</p>
+                  <p className="text-xs text-zinc-400 font-mono">v1.0.13</p>
                 </div>
               </div>
               
@@ -474,16 +535,47 @@ function App() {
               ) : (
                 <div className="flex flex-col gap-3">
                   {[...history].reverse().map((item, i) => (
-                    <div key={i} className="flex flex-col gap-1.5 p-4 bg-zinc-950/80 rounded-xl border border-zinc-800 hover:border-violet-500/30 transition-colors">
-                      <h4 className="font-semibold text-sm text-zinc-100">{item.title || "Video sin título"}</h4>
-                      <div className="flex items-center gap-2 text-xs text-zinc-400 break-all">
-                        <Globe size={12} className="text-violet-400 shrink-0"/>
-                        <span className="font-mono">{item.url || "URL desconocida"}</span>
+                    <div 
+                      key={i} 
+                      className="flex flex-col gap-2 p-4 bg-zinc-950/80 rounded-xl border border-zinc-800 hover:border-violet-500/30 transition-colors w-full min-w-0 overflow-hidden box-border"
+                    >
+                      <h4 
+                        className="font-semibold text-sm text-zinc-100 leading-snug w-full min-w-0 select-text"
+                        style={{ wordBreak: 'break-all', overflowWrap: 'anywhere' }}
+                      >
+                        {item.title || "Video sin título"}
+                      </h4>
+                      <div className="flex items-center gap-2 text-xs text-zinc-400 w-full min-w-0">
+                        <Globe size={13} className="text-violet-400 shrink-0"/>
+                        <span 
+                          className="font-mono text-xs text-zinc-400 select-text line-clamp-2 w-full min-w-0"
+                          style={{ wordBreak: 'break-all', overflowWrap: 'anywhere' }}
+                        >
+                          {item.url || "URL desconocida"}
+                        </span>
                       </div>
-                      <div className="flex items-center gap-3 text-xs font-medium text-zinc-500 mt-1">
-                        <span className="bg-zinc-800 px-2 py-0.5 rounded text-violet-300">{item.format.toUpperCase()}</span>
-                        <span className="bg-zinc-800 px-2 py-0.5 rounded text-sky-300">{item.quality}</span>
-                        <span className="bg-zinc-800 px-2 py-0.5 rounded text-zinc-300">{new Date(item.date).toLocaleString()}</span>
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-zinc-500 mt-1 border-t border-zinc-900/80 pt-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="bg-zinc-800 px-2 py-0.5 rounded text-violet-300 font-semibold">{item.format?.toUpperCase()}</span>
+                          <span className="bg-zinc-800 px-2 py-0.5 rounded text-sky-300">{item.quality}</span>
+                          {item.size && item.size !== "Completado" && item.size !== "0 MB" && (
+                            <span className="bg-zinc-800 px-2 py-0.5 rounded text-emerald-400 font-mono font-semibold">{item.size}</span>
+                          )}
+                          <span className="bg-zinc-800/80 px-2 py-0.5 rounded text-zinc-400">{new Date(item.date).toLocaleString()}</span>
+                        </div>
+                        {item.destFolder && (
+                          <button
+                            onClick={() => {
+                              invoke("open_folder", { path: item.destFolder }).catch(() => {
+                                openUrl(`file://${item.destFolder}`).catch(() => {});
+                              });
+                            }}
+                            className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-emerald-300 px-2 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors cursor-pointer"
+                            title="Abrir carpeta donde se guardó"
+                          >
+                            <Folder size={12} className="text-emerald-400" /> Abrir Carpeta
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -561,10 +653,33 @@ function App() {
             <X size={16} /> Limpiar
           </button>
           <button 
+            type="button"
             onClick={handlePaste}
-            className="flex items-center gap-2 px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg mr-1 transition-all font-medium text-sm cursor-pointer active:scale-95"
+            className={`flex items-center gap-2 px-5 py-2 rounded-lg mr-1 transition-all font-medium text-sm cursor-pointer active:scale-95 border ${
+              pasteStatus === 'pasted'
+                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.3)]' 
+                : pasteStatus === 'empty'
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700/60 shadow-sm'
+            }`}
+            title="Pegar enlace del portapapeles"
           >
-            <ClipboardPaste size={16} /> Pegar
+            {pasteStatus === 'pasted' ? (
+              <>
+                <CheckCircle2 size={16} className="text-emerald-400" />
+                <span className="font-semibold text-emerald-300">¡Pegado!</span>
+              </>
+            ) : pasteStatus === 'empty' ? (
+              <>
+                <AlertCircle size={16} className="text-amber-400" />
+                <span className="font-semibold text-amber-300">¡Vacío!</span>
+              </>
+            ) : (
+              <>
+                <ClipboardPaste size={16} className="text-violet-400" />
+                <span>Pegar</span>
+              </>
+            )}
           </button>
         </section>
 
@@ -705,6 +820,67 @@ function App() {
 
         {/* Action Section */}
         <section className="flex flex-col gap-4 mt-2">
+          {/* Permanent Last Download Card */}
+          {lastDownload && !downloading && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center justify-between p-4 bg-zinc-900/80 border border-emerald-500/25 rounded-2xl backdrop-blur-xl shadow-lg hover:border-emerald-500/40 transition-colors w-full min-w-0"
+            >
+              <div className="flex items-center gap-3.5 overflow-hidden pr-3 min-w-0 flex-1">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0 shadow-inner">
+                  <CheckCircle2 size={20} className="text-emerald-400" />
+                </div>
+                <div className="flex flex-col min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      Último video descargado
+                    </span>
+                    {lastDownload.size && lastDownload.size !== "0 MB" && (
+                      <span className="text-[11px] font-mono bg-zinc-800 text-violet-300 px-2 py-0.5 rounded font-semibold border border-violet-500/20">
+                        {lastDownload.size}
+                      </span>
+                    )}
+                  </div>
+                  <span 
+                    className="text-sm font-semibold text-zinc-100 truncate mt-0.5 select-text" 
+                    title={lastDownload.title}
+                  >
+                    {lastDownload.title}
+                  </span>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400 mt-0.5 font-mono">
+                    <span className="bg-zinc-800/80 px-1.5 py-0.5 rounded text-zinc-300 text-[10px]">{lastDownload.format?.toUpperCase()}</span>
+                    {lastDownload.quality && (
+                      <span className="bg-zinc-800/80 px-1.5 py-0.5 rounded text-sky-300 text-[10px]">{lastDownload.quality}</span>
+                    )}
+                    <span>•</span>
+                    <span className="text-zinc-400 text-[11px]">{new Date(lastDownload.date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+                    {lastDownload.destFolder && (
+                      <>
+                        <span>•</span>
+                        <span className="text-zinc-500 text-[11px] truncate max-w-[280px]" title={lastDownload.destFolder}>{lastDownload.destFolder}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  if (lastDownload.destFolder) {
+                    invoke("open_folder", { path: lastDownload.destFolder }).catch(() => {
+                      openUrl(`file://${lastDownload.destFolder}`).catch(() => {});
+                    });
+                  }
+                }}
+                className="px-3.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-semibold border border-zinc-700 transition-all shrink-0 cursor-pointer active:scale-95 flex items-center gap-2 shadow-sm ml-2"
+                title="Abrir carpeta de destino"
+              >
+                <Folder size={15} className="text-emerald-400" /> Abrir Carpeta
+              </button>
+            </motion.div>
+          )}
+
           <AnimatePresence>
             {(downloading || progress > 0 || downloadError) && (
               <motion.div 
@@ -736,7 +912,14 @@ function App() {
                       <span className="text-xs font-mono text-zinc-500 mb-1">{stats.status || "Descargando..."}</span>
                       <span className="font-semibold text-zinc-200 line-clamp-1 truncate">{videoInfo?.title || url}</span>
                     </div>
-                    <span className="text-2xl font-bold text-zinc-100 font-mono">{progress > 0 ? `${progress}%` : '...'}</span>
+                    <div className="flex flex-col items-end shrink-0">
+                      <span className="text-2xl font-bold text-zinc-100 font-mono">{progress > 0 ? `${progress}%` : '...'}</span>
+                      {stats.downloaded && stats.size && stats.size !== "0 MB" && stats.size !== "Completado" && (
+                        <span className="text-xs font-mono text-violet-300 font-semibold">
+                          {stats.downloaded} / {stats.size}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   
                   <div className="h-1.5 w-full bg-zinc-950 rounded-full overflow-hidden relative">
@@ -758,8 +941,13 @@ function App() {
 
                   <div className="flex justify-between items-center text-xs text-zinc-400 font-mono mt-1">
                     <div className="flex gap-4">
-                      <span className="flex items-center gap-1"><HardDrive size={12}/> {stats.size !== "0 MB" ? stats.size : "Calculando tamaño..."}</span>
-                      <span className="text-emerald-500">{stats.speed}</span>
+                      <span className="flex items-center gap-1.5">
+                        <HardDrive size={13} className="text-violet-400"/> 
+                        {stats.downloaded && stats.size && stats.size !== "0 MB" && stats.size !== "Completado"
+                          ? <span className="text-zinc-200 font-semibold">{stats.downloaded} de {stats.size}</span>
+                          : (stats.size !== "0 MB" ? stats.size : "Calculando peso...")}
+                      </span>
+                      <span className="text-emerald-400 font-medium">{stats.speed}</span>
                     </div>
                     <span>ETA: {stats.eta !== "--:--" ? stats.eta : "N/A"}</span>
                   </div>
