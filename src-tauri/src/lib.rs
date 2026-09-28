@@ -103,6 +103,9 @@ async fn get_video_info(app: AppHandle, url: String, browser: String) -> Result<
         Ok(parsed)
     } else {
         let err_str = String::from_utf8_lossy(&output.stderr);
+        if err_str.contains("Could not copy") && err_str.contains("cookie database") {
+            return Err("No se pudieron leer las cookies. Cierra tu navegador antes de buscar o elige 'Ninguno' en Navegador.".to_string());
+        }
         Err(format!("Error obteniendo información: {}", err_str))
     }
 }
@@ -177,16 +180,25 @@ async fn start_download(
         let mut last_err = String::new();
         while let Ok(Some(line)) = err_reader.next_line().await {
             if line.contains("ERROR:") {
-                last_err = line;
+                let err_msg = line.replace("ERROR:", "").trim().to_string();
+                if err_msg.contains("Could not copy") && err_msg.contains("cookie database") {
+                    last_err = "No se pudieron leer las cookies. Cierra el navegador seleccionado o elige 'Ninguno'.".to_string();
+                } else {
+                    last_err = err_msg;
+                }
             }
         }
         last_err
     });
 
     let mut reader = BufReader::new(stdout).lines();
+    let mut downloaded_something = false;
+    let mut last_percent = 0.0;
+    let mut last_size = String::new();
 
     while let Ok(Some(line)) = reader.next_line().await {
         if line.starts_with("[download]") && line.contains("%") {
+            downloaded_something = true;
             let parts: Vec<&str> = line.split_whitespace().collect();
             let mut percent = 0.0;
             let mut size = String::new();
@@ -208,8 +220,26 @@ async fn start_download(
                 }
             }
 
+            last_percent = percent;
+            if !size.is_empty() {
+                last_size = size.clone();
+            }
+
             let _ = app.emit("download-progress", VideoProgress {
                 percent, size, speed, eta, status: "Descargando...".to_string(),
+            });
+        } else if line.contains("[merger]") || line.contains("Merging formats") {
+            let _ = app.emit("download-progress", VideoProgress {
+                percent: last_percent, size: last_size.clone(), speed: "-".to_string(), eta: "-".to_string(), status: "Fusionando pistas...".to_string(),
+            });
+        } else if line.contains("has already been downloaded") {
+            downloaded_something = true;
+            let _ = app.emit("download-progress", VideoProgress {
+                percent: 100.0, size: last_size.clone(), speed: "-".to_string(), eta: "-".to_string(), status: "Ya descargado".to_string(),
+            });
+        } else if line.contains("[ExtractInfo]") || line.contains("Extracting URL") {
+            let _ = app.emit("download-progress", VideoProgress {
+                percent: last_percent, size: last_size.clone(), speed: "-".to_string(), eta: "-".to_string(), status: "Extrayendo metadatos...".to_string(),
             });
         }
     }
@@ -217,7 +247,7 @@ async fn start_download(
     let status = child.wait().await.map_err(|e| e.to_string())?;
     let last_error = err_task.await.unwrap_or_default();
 
-    if status.success() {
+    if status.success() || (playlist && downloaded_something) {
         let _ = app.emit("download-progress", VideoProgress {
             percent: 100.0, size: "Completado".to_string(), speed: "-".to_string(), eta: "00:00".to_string(), status: "Completado".to_string(),
         });
