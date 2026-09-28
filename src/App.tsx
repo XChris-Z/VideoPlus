@@ -1,20 +1,27 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { open } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { 
   Download, Settings, ClipboardPaste, 
   CheckCircle2, Folder, Film, MonitorPlay, 
-  Video, Music, HardDrive, Clock, Globe, X, AlertCircle, Info
+  Video, Music, HardDrive, Clock, Globe, X, AlertCircle, Info, Trash2
 } from "lucide-react";
 import { downloadDir } from '@tauri-apps/api/path';
 import { readText } from '@tauri-apps/plugin-clipboard-manager';
 
 function App() {
   const [url, setUrl] = useState("");
+  const activeDownloadRef = useRef<{ url: string; title: string; format: string; quality: string }>({
+    url: "",
+    title: "",
+    format: "",
+    quality: ""
+  });
   const [format, setFormat] = useState(() => localStorage.getItem('vplus_format') || "video");
   const [quality, setQuality] = useState(() => localStorage.getItem('vplus_quality') || "1080p");
   const [browser, setBrowser] = useState(() => localStorage.getItem('vplus_browser') || "firefox");
@@ -85,18 +92,51 @@ function App() {
   const handleUpdateApp = async () => {
     try {
       setUpdatingApp(true);
-      const update = await check();
-      if (update) {
-        setEngineStatus(`Descargando actualización v${update.version}...`);
-        await update.downloadAndInstall();
-        setEngineStatus("Actualización instalada. Reiniciando...");
-        await relaunch();
-      } else {
-        setEngineStatus("Ya tienes la última versión ✅");
+      setEngineStatus("Buscando actualizaciones...");
+      let updateFound = false;
+
+      // 1. Intentar primero con el actualizador nativo de Tauri
+      try {
+        const update = await check();
+        if (update) {
+          updateFound = true;
+          setEngineStatus(`Descargando actualización v${update.version}...`);
+          await update.downloadAndInstall();
+          setEngineStatus("Actualización instalada. Reiniciando...");
+          await relaunch();
+          return;
+        }
+      } catch (updaterErr) {
+        console.warn("Tauri updater check no pudo completarse:", updaterErr);
       }
-    } catch (e) {
+
+      // 2. Comprobación de respaldo contra la API de GitHub Releases
+      try {
+        const response = await fetch("https://api.github.com/repos/XChris-Z/VideoPlus/releases/latest");
+        if (response.ok) {
+          const data = await response.json();
+          const remoteTag = data.tag_name || "";
+          const currentVersion = "v1.0.12";
+          
+          if (remoteTag && remoteTag !== currentVersion) {
+            updateFound = true;
+            setEngineStatus(`Nueva versión ${remoteTag} disponible en GitHub`);
+            if (data.html_url) {
+              await openUrl(data.html_url);
+            }
+            return;
+          }
+        }
+      } catch (ghErr) {
+        console.warn("GitHub API check falló:", ghErr);
+      }
+
+      if (!updateFound) {
+        setEngineStatus("Ya tienes la última versión (v1.0.12) ✅");
+      }
+    } catch (e: any) {
       console.error(e);
-      setEngineStatus("Aún no hay versiones publicadas en GitHub.");
+      setEngineStatus("No se pudo verificar la actualización.");
     } finally {
       setUpdatingApp(false);
     }
@@ -117,10 +157,44 @@ function App() {
   };
 
   const saveToHistory = async () => {
-    const newEntry = { url, format, quality, date: new Date().toISOString(), title: videoInfo?.title || url };
-    const newHistory = [...history, newEntry];
-    setHistory(newHistory);
-    await invoke("save_history", { historyJson: JSON.stringify(newHistory) });
+    const current = activeDownloadRef.current;
+    if (!current.url) return;
+
+    try {
+      const raw: any = await invoke("get_history");
+      let currentHistory: any[] = [];
+      try {
+        currentHistory = JSON.parse(raw);
+        if (!Array.isArray(currentHistory)) currentHistory = [];
+      } catch {
+        currentHistory = [];
+      }
+
+      // Evitar guardar duplicado si la última descarga es idéntica en menos de 10s
+      const lastEntry = currentHistory[currentHistory.length - 1];
+      if (lastEntry && lastEntry.url === current.url && (Date.now() - new Date(lastEntry.date).getTime() < 10000)) {
+        return;
+      }
+
+      const newEntry = {
+        url: current.url,
+        format: current.format,
+        quality: current.quality,
+        date: new Date().toISOString(),
+        title: current.title || current.url
+      };
+
+      const newHistory = [...currentHistory, newEntry];
+      setHistory(newHistory);
+      await invoke("save_history", { historyJson: JSON.stringify(newHistory) });
+    } catch (err) {
+      console.error("Error guardando historial:", err);
+    }
+  };
+
+  const handleClearHistory = async () => {
+    setHistory([]);
+    await invoke("save_history", { historyJson: "[]" });
   };
 
   const fetchVideoInfo = async (targetUrl: string, targetBrowser: string) => {
@@ -162,10 +236,26 @@ function App() {
 
   const handlePaste = async () => {
     try {
-      const text = await readText();
+      let text = "";
+      try {
+        text = await readText();
+      } catch (tauriErr) {
+        console.warn("Tauri clipboard plugin fallo, usando fallback de navegador:", tauriErr);
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          text = await navigator.clipboard.readText();
+        }
+      }
+      if (!text && navigator.clipboard && navigator.clipboard.readText) {
+        try {
+          text = await navigator.clipboard.readText();
+        } catch {}
+      }
       if (text) {
-        setUrl(text);
-        fetchVideoInfo(text, browser);
+        const clean = text.trim();
+        setUrl(clean);
+        if (clean.startsWith("http")) {
+          fetchVideoInfo(clean, browser);
+        }
       }
     } catch (err) {
       console.error("Failed to read clipboard contents: ", err);
@@ -197,6 +287,12 @@ function App() {
 
   const handleDownload = async () => {
     if (!url) return;
+    activeDownloadRef.current = {
+      url,
+      title: videoInfo?.title || url,
+      format,
+      quality
+    };
     setDownloading(true);
     setDownloadError("");
     setProgress(0);
@@ -211,6 +307,8 @@ function App() {
         playlist: playlist,
         browser
       });
+      // Asegurar registro garantizado al completarse
+      saveToHistory();
     } catch (error: any) {
       console.error(error);
       setDownloadError(error.toString());
@@ -309,7 +407,7 @@ function App() {
                 </div>
                 <div>
                   <h3 className="font-bold text-zinc-100 text-lg">VideoPlus</h3>
-                  <p className="text-xs text-zinc-400 font-mono">v1.0.8</p>
+                  <p className="text-xs text-zinc-400 font-mono">v1.0.12</p>
                 </div>
               </div>
               
@@ -355,9 +453,20 @@ function App() {
             >
             <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50">
               <h2 className="font-semibold text-lg flex items-center gap-2"><Clock size={18}/> Historial de Descargas</h2>
-              <button onClick={() => setShowHistory(false)} className="text-zinc-400 hover:text-white p-1 rounded-md hover:bg-zinc-800">
-                Cerrar
-              </button>
+              <div className="flex items-center gap-2">
+                {history.length > 0 && (
+                  <button 
+                    onClick={handleClearHistory}
+                    className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-md cursor-pointer transition-all active:scale-95"
+                    title="Vaciar todo el historial"
+                  >
+                    <Trash2 size={13} /> Limpiar Historial
+                  </button>
+                )}
+                <button onClick={() => setShowHistory(false)} className="text-zinc-400 hover:text-white p-1 rounded-md hover:bg-zinc-800 cursor-pointer">
+                  Cerrar
+                </button>
+              </div>
             </div>
             <div className="overflow-y-auto p-4 flex-1">
               {history.length === 0 ? (

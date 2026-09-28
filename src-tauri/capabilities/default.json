@@ -11,6 +11,7 @@
     "os:default",
     "shell:default",
     "updater:default",
-    "process:default"
+    "process:default",
+    "clipboard-manager:default"
   ]
 }
