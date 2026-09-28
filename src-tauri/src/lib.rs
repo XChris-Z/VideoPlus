@@ -1,5 +1,4 @@
 use tauri::{AppHandle, Manager, Emitter};
-use std::path::PathBuf;
 use tokio::fs::{File, create_dir_all};
 use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
 use std::process::Stdio;
@@ -19,6 +18,41 @@ struct VideoProgress {
     speed: String,
     eta: String,
     status: String,
+}
+
+#[tauri::command]
+async fn get_engine_versions(app: AppHandle) -> Result<serde_json::Value, String> {
+    let data_dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let yt_path = data_dir.join("yt-dlp.exe");
+    let ffmpeg_path = data_dir.join("ffmpeg.exe");
+
+    let mut yt_version = "No instalado".to_string();
+    if yt_path.exists() {
+        let mut cmd = Command::new(&yt_path);
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(0x08000000);
+        if let Ok(output) = cmd.arg("--version").output().await {
+            yt_version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        }
+    }
+
+    let mut ffmpeg_version = "No instalado".to_string();
+    if ffmpeg_path.exists() {
+        let mut cmd = Command::new(&ffmpeg_path);
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(0x08000000);
+        if let Ok(output) = cmd.arg("-version").output().await {
+            let out_str = String::from_utf8_lossy(&output.stdout);
+            if let Some(line) = out_str.lines().next() {
+                ffmpeg_version = line.replace("ffmpeg version ", "").split_whitespace().next().unwrap_or("").to_string();
+            }
+        }
+    }
+
+    Ok(serde_json::json!({
+        "yt_dlp": yt_version,
+        "ffmpeg": ffmpeg_version
+    }))
 }
 
 #[tauri::command]
