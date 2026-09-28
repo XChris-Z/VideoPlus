@@ -8,9 +8,10 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { 
   Download, Settings, ClipboardPaste, 
   CheckCircle2, Folder, Film, MonitorPlay, 
-  Video, Music, HardDrive, Clock, Globe, X, AlertCircle
+  Video, Music, HardDrive, Clock, Globe, X, AlertCircle, Info
 } from "lucide-react";
 import { downloadDir } from '@tauri-apps/api/path';
+import { readText } from '@tauri-apps/plugin-clipboard-manager';
 
 function App() {
   const [url, setUrl] = useState("");
@@ -31,6 +32,9 @@ function App() {
   const [loadingInfo, setLoadingInfo] = useState(false);
   const [updatingApp, setUpdatingApp] = useState(false);
   const [updatingEngines, setUpdatingEngines] = useState(false);
+  const [showNotification, setShowNotification] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
+  const [versions, setVersions] = useState({ yt_dlp: "Cargando...", ffmpeg: "Cargando..." });
 
   useEffect(() => {
     // Escuchar progreso de descarga de motores
@@ -46,6 +50,7 @@ function App() {
       if (p.percent === 100) {
         setDownloading(false);
         saveToHistory();
+        setShowNotification(true);
       }
     });
 
@@ -139,6 +144,16 @@ function App() {
     }
   };
 
+  const handleShowAbout = async () => {
+    setShowAbout(true);
+    try {
+      const res: any = await invoke("get_engine_versions");
+      setVersions(res);
+    } catch (e) {
+      setVersions({ yt_dlp: "Error", ffmpeg: "Error" });
+    }
+  };
+
   useEffect(() => {
     if (url && url.startsWith("http")) {
       fetchVideoInfo(url, browser);
@@ -147,9 +162,11 @@ function App() {
 
   const handlePaste = async () => {
     try {
-      const text = await navigator.clipboard.readText();
-      setUrl(text);
-      fetchVideoInfo(text, browser);
+      const text = await readText();
+      if (text) {
+        setUrl(text);
+        fetchVideoInfo(text, browser);
+      }
     } catch (err) {
       console.error("Failed to read clipboard contents: ", err);
     }
@@ -233,6 +250,69 @@ function App() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col font-sans select-none relative">
+      {/* Non-invasive Notification */}
+      {showNotification && (
+        <div 
+          className="fixed inset-0 z-[200] flex items-end justify-center pb-8 pointer-events-auto" 
+          onClick={() => setShowNotification(false)}
+        >
+          <motion.div 
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-100 px-6 py-4 rounded-2xl shadow-[0_10px_40px_rgba(16,185,129,0.15)] flex items-center gap-4 backdrop-blur-md cursor-pointer hover:bg-emerald-500/20 transition-colors"
+          >
+            <CheckCircle2 className="text-emerald-400" size={24} />
+            <div>
+              <h3 className="font-semibold text-emerald-300">¡Descarga Completada!</h3>
+              <p className="text-xs opacity-80">Haz clic en cualquier parte para cerrar esto.</p>
+            </div>
+          </motion.div>
+        </div>
+      )}
+      {/* About Modal */}
+      {showAbout && (
+        <div className="absolute inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowAbout(false)}>
+          <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-sm flex flex-col shadow-2xl overflow-hidden pointer-events-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50">
+              <h2 className="font-semibold text-lg flex items-center gap-2"><Info size={18} className="text-violet-400"/> Información y Versiones</h2>
+              <button onClick={() => setShowAbout(false)} className="text-zinc-400 hover:text-white p-1 rounded-md hover:bg-zinc-800 cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6 flex flex-col gap-4">
+              <div className="flex items-center gap-4 mb-2">
+                <div className="w-12 h-12 bg-gradient-to-br from-violet-500 to-fuchsia-500 rounded-xl flex items-center justify-center shadow-lg">
+                  <Download className="text-white" size={24} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-zinc-100 text-lg">VideoPlus</h3>
+                  <p className="text-xs text-zinc-400 font-mono">v1.0.8</p>
+                </div>
+              </div>
+              
+              <div className="bg-zinc-950 p-4 rounded-lg border border-zinc-800 flex flex-col gap-3">
+                <div className="flex justify-between items-center border-b border-zinc-800/50 pb-2">
+                  <span className="text-sm font-medium text-zinc-300">Motor (yt-dlp)</span>
+                  <span className="text-xs font-mono bg-zinc-800 px-2 py-1 rounded text-violet-300">{versions.yt_dlp}</span>
+                </div>
+                <div className="flex justify-between items-center border-b border-zinc-800/50 pb-2">
+                  <span className="text-sm font-medium text-zinc-300">Conversor (ffmpeg)</span>
+                  <span className="text-xs font-mono bg-zinc-800 px-2 py-1 rounded text-sky-300">{versions.ffmpeg}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-zinc-300">Sistema Operativo</span>
+                  <span className="text-xs font-mono bg-zinc-800 px-2 py-1 rounded text-zinc-400">Windows</span>
+                </div>
+              </div>
+              <p className="text-xs text-center text-zinc-500 mt-2">
+                Desarrollado por XChris-Z
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* History Modal */}
       {showHistory && (
         <div className="absolute inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -250,10 +330,10 @@ function App() {
                 <div className="flex flex-col gap-3">
                   {[...history].reverse().map((item, i) => (
                     <div key={i} className="flex flex-col gap-1.5 p-4 bg-zinc-950/80 rounded-xl border border-zinc-800 hover:border-violet-500/30 transition-colors">
-                      <h4 className="font-semibold text-sm text-zinc-100">{item.title}</h4>
+                      <h4 className="font-semibold text-sm text-zinc-100">{item.title || "Video sin título"}</h4>
                       <div className="flex items-center gap-2 text-xs text-zinc-400 break-all">
                         <Globe size={12} className="text-violet-400 shrink-0"/>
-                        <span className="font-mono">{item.url}</span>
+                        <span className="font-mono">{item.url || "URL desconocida"}</span>
                       </div>
                       <div className="flex items-center gap-3 text-xs font-medium text-zinc-500 mt-1">
                         <span className="bg-zinc-800 px-2 py-0.5 rounded text-violet-300">{item.format.toUpperCase()}</span>
@@ -275,6 +355,9 @@ function App() {
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
           <h1 className="font-semibold tracking-wide text-xs text-zinc-300 uppercase">{engineStatus}</h1>
         </div>
+        <button onClick={handleShowAbout} className="text-zinc-400 hover:text-white p-1.5 rounded-md hover:bg-zinc-800 cursor-pointer active:scale-95 transition-all" title="Acerca de">
+          <Info size={16} />
+        </button>
       </div>
 
       <main className="flex-1 overflow-y-auto p-6 flex flex-col gap-6 max-w-[1200px] mx-auto w-full">
@@ -295,14 +378,14 @@ function App() {
           </div>
           <div className="flex flex-col gap-2 items-end">
             <div className="flex gap-2">
-              <button onClick={handleUpdateEngines} disabled={updatingEngines} className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md transition-colors text-xs shadow-sm disabled:opacity-50 border border-zinc-700">
+              <button onClick={handleUpdateEngines} disabled={updatingEngines} className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md transition-all text-xs shadow-sm disabled:opacity-50 border border-zinc-700 cursor-pointer active:scale-95">
                 {updatingEngines ? "Actualizando..." : "Actualizar Motor"}
               </button>
-              <button onClick={handleUpdateApp} disabled={updatingApp} className="flex items-center gap-2 px-3 py-1.5 bg-violet-600/20 hover:bg-violet-600/40 text-violet-300 border border-violet-500/30 rounded-md transition-colors text-xs shadow-sm disabled:opacity-50">
+              <button onClick={handleUpdateApp} disabled={updatingApp} className="flex items-center gap-2 px-3 py-1.5 bg-violet-600/20 hover:bg-violet-600/40 text-violet-300 border border-violet-500/30 rounded-md transition-all text-xs shadow-sm disabled:opacity-50 cursor-pointer active:scale-95">
                 {updatingApp ? "Buscando..." : "Actualizar App"}
               </button>
             </div>
-            <button onClick={() => setShowHistory(true)} className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg border border-zinc-700 transition-colors font-medium text-sm shadow-sm w-full justify-center">
+            <button onClick={() => setShowHistory(true)} className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg border border-zinc-700 transition-all font-medium text-sm shadow-sm w-full justify-center cursor-pointer active:scale-95">
               Ver Historial
             </button>
           </div>
@@ -327,13 +410,13 @@ function App() {
           )}
           <button 
             onClick={() => { setUrl(""); setVideoInfo(null); setInfoError(""); setProgress(0); setDownloadError(""); }}
-            className="flex items-center gap-2 px-4 py-2 bg-zinc-800/50 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 rounded-lg mr-2 transition-colors font-medium text-sm"
+            className="flex items-center gap-2 px-4 py-2 bg-zinc-800/50 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 rounded-lg mr-2 transition-all font-medium text-sm cursor-pointer active:scale-95"
           >
             <X size={16} /> Limpiar
           </button>
           <button 
             onClick={handlePaste}
-            className="flex items-center gap-2 px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg mr-1 transition-colors font-medium text-sm"
+            className="flex items-center gap-2 px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg mr-1 transition-all font-medium text-sm cursor-pointer active:scale-95"
           >
             <ClipboardPaste size={16} /> Pegar
           </button>
@@ -430,7 +513,7 @@ function App() {
                 />
                 <button 
                   onClick={handleSelectFolder}
-                  className="p-2.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 transition-colors text-zinc-300"
+                  className="p-2.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 transition-all text-zinc-300 cursor-pointer active:scale-95"
                   title="Seleccionar carpeta"
                 >
                   <Folder size={18} />
@@ -439,15 +522,21 @@ function App() {
             </div>
 
             <div className="grid grid-cols-2 gap-4 mt-1">
-              <div className="flex items-center gap-3 bg-zinc-950/50 p-3 rounded-lg border border-zinc-800/50">
-                <input 
-                  type="checkbox" 
-                  id="playlist" 
-                  checked={playlist}
-                  onChange={(e) => setPlaylist(e.target.checked)}
-                  className="w-4 h-4 accent-violet-600 bg-zinc-900 border-zinc-700 rounded" 
-                />
-                <label htmlFor="playlist" className="text-sm text-zinc-300 select-none cursor-pointer">Descargar Playlist completa</label>
+              <div 
+                className={`flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer group select-none ${playlist ? 'bg-violet-900/20 border-violet-500/50 shadow-[0_0_15px_rgba(139,92,246,0.1)]' : 'bg-zinc-950/50 border-zinc-800/50 hover:border-zinc-700'}`}
+                onClick={() => setPlaylist(!playlist)}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-6 rounded-full p-1 transition-colors duration-300 ease-in-out flex items-center ${playlist ? 'bg-violet-600' : 'bg-zinc-700'}`}>
+                    <motion.div 
+                      layout
+                      initial={false}
+                      animate={{ x: playlist ? 16 : 0 }}
+                      className="w-4 h-4 bg-white rounded-full shadow-sm"
+                    />
+                  </div>
+                  <span className={`text-sm transition-colors ${playlist ? 'text-violet-200 font-medium' : 'text-zinc-300 group-hover:text-zinc-200'}`}>Playlist Completa</span>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider whitespace-nowrap">Cookies:</label>

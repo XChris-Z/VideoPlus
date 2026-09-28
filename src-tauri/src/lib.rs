@@ -292,13 +292,15 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![
             check_and_download_engines,
             update_engines,
             get_video_info,
             start_download,
             get_history,
-            save_history
+            save_history,
+            get_engine_versions
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

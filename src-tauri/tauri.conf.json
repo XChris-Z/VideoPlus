@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "Universal Video Downloader",
-        "width": 900,
-        "height": 700,
+        "width": 1000,
+        "height": 850,
         "resizable": true,
         "fullscreen": false,
         "minWidth": 800,
