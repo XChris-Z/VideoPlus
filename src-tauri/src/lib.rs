@@ -19,6 +19,9 @@ struct VideoProgress {
     speed: String,
     eta: String,
     status: String,
+    current_item: Option<String>,
+    total_items: Option<String>,
+    item_title: Option<String>,
 }
 
 #[tauri::command]
@@ -214,6 +217,9 @@ async fn cancel_download(app: AppHandle) -> Result<(), String> {
         speed: "-".to_string(),
         eta: "--:--".to_string(),
         status: "Descarga cancelada por el usuario".to_string(),
+        current_item: None,
+        total_items: None,
+        item_title: None,
     });
     Ok(())
 }
@@ -294,6 +300,18 @@ async fn start_download(
     // Terminar de inmediato cualquier proceso previo residual para evitar bucles o descargas duplicadas
     kill_active_process();
 
+    let temp_dir = data_dir.join("temp");
+    if !temp_dir.exists() {
+        let _ = create_dir_all(&temp_dir).await;
+    } else {
+        // Limpiar archivos residuales previos en la carpeta temporal
+        if let Ok(mut entries) = tokio::fs::read_dir(&temp_dir).await {
+            while let Ok(Some(entry)) = entries.next_entry().await {
+                let _ = tokio::fs::remove_file(entry.path()).await;
+            }
+        }
+    }
+
     let is_yt = is_youtube_url(&url);
     let use_cookies_initial = !is_yt && browser != "none";
 
@@ -306,14 +324,21 @@ async fn start_download(
         let quality = quality.clone();
         let dest_folder = dest_folder.clone();
         let browser = browser.clone();
+        let temp_dir = temp_dir.clone();
 
         async move {
             let mut cmd = Command::new(&yt_path);
             configure_cmd_environment(&mut cmd);
             cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
-            // Optimización de velocidad multihilo y estabilidad de red
-            cmd.arg("-N").arg("8")
+            // Aislamiento total de fragmentos temporales:
+            // Todos los .part, .part-FragXXXX y .ytdl van a la carpeta temp de AppData y NO a la carpeta del usuario
+            cmd.arg("-P").arg(format!("home:{}", dest_folder));
+            cmd.arg("-P").arg(format!("temp:{}", temp_dir.display()));
+            cmd.arg("--no-keep-fragments");
+
+            // 4 conexiones concurrentes es el balance óptimo: descarga ultra rápida sin colapsar el disco ni saturar el PC
+            cmd.arg("-N").arg("4")
                .arg("--retries").arg("10")
                .arg("--fragment-retries").arg("10")
                .arg("--no-mtime")
@@ -330,13 +355,12 @@ async fn start_download(
 
             if !playlist {
                 cmd.arg("--no-playlist");
-                cmd.arg("-o").arg(format!("{}/%(title)s.%(ext)s", dest_folder));
+                cmd.arg("-o").arg("%(title)s.%(ext)s");
             } else {
-                // Descarga perezosa ultra rápida para listas de reproducción
                 cmd.arg("--yes-playlist")
                    .arg("--lazy-playlist")
                    .arg("--ignore-errors");
-                cmd.arg("-o").arg(format!("{}/%(playlist_title&{{}}/|)s%(playlist_index&{{}} - |)s%(title)s.%(ext)s", dest_folder));
+                cmd.arg("-o").arg("%(playlist_title&{}/|)s%(playlist_index&{} - |)s%(title)s.%(ext)s");
             }
 
             if format == "audio" {
@@ -404,15 +428,33 @@ async fn start_download(
             let mut last_percent = 0.0;
             let mut last_downloaded = String::new();
             let mut last_size = String::new();
+            let mut stable_size_val = 0.0f64;
+            let mut stable_size_unit = String::new();
             let mut playlist_item_status = String::new();
+            let mut current_item_num: Option<String> = None;
+            let mut total_items_num: Option<String> = None;
+            let mut current_video_title: Option<String> = None;
+            let mut last_emit_time = std::time::Instant::now();
 
             while let Ok(Some(line)) = reader.next_line().await {
                 if line.contains("Downloading item ") || line.contains("Downloading video ") {
                     if let Some(idx) = line.find("Downloading ") {
                         let segment = line[idx..].trim();
-                        playlist_item_status = segment
-                            .replace("Downloading item", "Elemento")
-                            .replace("Downloading video", "Video");
+                        let clean_seg = segment.replace("Downloading item ", "").replace("Downloading video ", "");
+                        let split_parts: Vec<&str> = clean_seg.split(" of ").collect();
+                        if split_parts.len() == 2 {
+                            current_item_num = Some(split_parts[0].trim().to_string());
+                            total_items_num = Some(split_parts[1].trim().to_string());
+                            playlist_item_status = format!("Elemento {} de {}", split_parts[0].trim(), split_parts[1].trim());
+                        }
+                    }
+                } else if line.contains("Destination: ") {
+                    if let Some(idx) = line.find("Destination: ") {
+                        let path_str = line[idx + 13..].trim();
+                        let path = std::path::Path::new(path_str);
+                        if let Some(file_name) = path.file_stem() {
+                            current_video_title = Some(file_name.to_string_lossy().to_string());
+                        }
                     }
                 }
 
@@ -420,7 +462,7 @@ async fn start_download(
                     downloaded_something = true;
                     let parts: Vec<&str> = line.split_whitespace().collect();
                     let mut percent = 0.0;
-                    let mut size = String::new();
+                    let mut raw_size = String::new();
                     let mut speed = String::new();
                     let mut eta = String::new();
 
@@ -430,28 +472,62 @@ async fn start_download(
                             percent = p_clean.replace("%", "").parse().unwrap_or(0.0);
                         } else if p_clean.contains("/s") {
                             speed = p_clean;
-                        } else if p_clean.contains("B") && !p_clean.contains("ETA") {
-                            if size.is_empty() {
-                                size = p_clean;
+                        } else if p_clean == "of" && i + 1 < parts.len() {
+                            let next_val = parts[i + 1].replace("~", "");
+                            if next_val.contains("B") {
+                                raw_size = next_val;
+                            } else if i + 2 < parts.len() {
+                                let second_val = parts[i + 2].replace("~", "");
+                                if second_val.contains("B") {
+                                    raw_size = second_val;
+                                }
                             }
                         } else if p_clean == "ETA" && i + 1 < parts.len() {
                             eta = parts[i + 1].replace("~", "");
                         }
                     }
 
-                    let mut downloaded = String::new();
-                    if !size.is_empty() && percent > 0.0 {
-                        let num_str: String = size.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
-                        let unit_str: String = size.chars().skip_while(|c| c.is_ascii_digit() || *c == '.').collect();
-                        if let Ok(num) = num_str.parse::<f64>() {
-                            let current_downloaded = num * (percent / 100.0);
-                            downloaded = format!("{:.2}{}", current_downloaded, unit_str);
+                    if raw_size.is_empty() {
+                        for p in parts.iter() {
+                            let p_clean = p.replace("~", "");
+                            if (p_clean.ends_with("MiB") || p_clean.ends_with("GiB") || p_clean.ends_with("KiB") || p_clean.ends_with("B")) && !p_clean.contains("/s") && !p_clean.contains("%") {
+                                raw_size = p_clean;
+                                break;
+                            }
                         }
                     }
 
+                    // Estabilizar el total para evitar parpadeos visuales
+                    if !raw_size.is_empty() {
+                        let num_str: String = raw_size.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+                        let unit_str: String = raw_size.chars().skip_while(|c| c.is_ascii_digit() || *c == '.').collect();
+                        if let Ok(new_val) = num_str.parse::<f64>() {
+                            if stable_size_val == 0.0 || (new_val - stable_size_val).abs() / stable_size_val > 0.05 || stable_size_unit != unit_str {
+                                stable_size_val = new_val;
+                                stable_size_unit = unit_str.clone();
+                            }
+                        }
+                    }
+
+                    let stable_size_str = if stable_size_val > 0.0 {
+                        format!("{:.2}{}", stable_size_val, stable_size_unit)
+                    } else if !raw_size.is_empty() {
+                        raw_size
+                    } else {
+                        last_size.clone()
+                    };
+
+                    // Calcular descargado en base al total estabilizado
+                    let downloaded = if stable_size_val > 0.0 && percent > 0.0 {
+                        let current_dl = stable_size_val * (percent / 100.0);
+                        format!("{:.2}{}", current_dl, stable_size_unit)
+                    } else {
+                        String::new()
+                    };
+
                     last_percent = percent;
-                    if !size.is_empty() {
-                        last_size = size.clone();
+                    if !stable_size_str.is_empty() {
+                        last_size = stable_size_str.clone();
                     }
                     if !downloaded.is_empty() {
                         last_downloaded = downloaded.clone();
@@ -463,14 +539,22 @@ async fn start_download(
                         "Descargando...".to_string()
                     };
 
-                    let _ = app.emit("download-progress", VideoProgress {
-                        percent,
-                        downloaded,
-                        size,
-                        speed,
-                        eta,
-                        status: status_text,
-                    });
+                    // Throttle de eventos para que la UI no sufra jitter ni parpadee
+                    let now = std::time::Instant::now();
+                    if now.duration_since(last_emit_time).as_millis() >= 120 || percent >= 100.0 {
+                        last_emit_time = now;
+                        let _ = app.emit("download-progress", VideoProgress {
+                            percent,
+                            downloaded,
+                            size: stable_size_str,
+                            speed,
+                            eta,
+                            status: status_text,
+                            current_item: current_item_num.clone(),
+                            total_items: total_items_num.clone(),
+                            item_title: current_video_title.clone(),
+                        });
+                    }
                 } else if line.contains("[merger]") || line.contains("Merging formats") {
                     let _ = app.emit("download-progress", VideoProgress {
                         percent: last_percent,
@@ -479,6 +563,9 @@ async fn start_download(
                         speed: "-".to_string(),
                         eta: "-".to_string(),
                         status: "Fusionando pistas...".to_string(),
+                        current_item: current_item_num.clone(),
+                        total_items: total_items_num.clone(),
+                        item_title: current_video_title.clone(),
                     });
                 } else if line.contains("has already been downloaded") {
                     downloaded_something = true;
@@ -490,6 +577,9 @@ async fn start_download(
                         speed: "-".to_string(),
                         eta: "-".to_string(),
                         status: "Ya descargado".to_string(),
+                        current_item: current_item_num.clone(),
+                        total_items: total_items_num.clone(),
+                        item_title: current_video_title.clone(),
                     });
                 } else if line.contains("[ExtractInfo]") || line.contains("Extracting URL") {
                     let _ = app.emit("download-progress", VideoProgress {
@@ -499,6 +589,9 @@ async fn start_download(
                         speed: "-".to_string(),
                         eta: "-".to_string(),
                         status: "Extrayendo metadatos...".to_string(),
+                        current_item: current_item_num.clone(),
+                        total_items: total_items_num.clone(),
+                        item_title: current_video_title.clone(),
                     });
                 }
             }
@@ -510,6 +603,13 @@ async fn start_download(
                 *lock = None;
             }
 
+            // Limpiar archivos temporales residuales tras finalizar
+            if let Ok(mut entries) = tokio::fs::read_dir(&temp_dir).await {
+                while let Ok(Some(entry)) = entries.next_entry().await {
+                    let _ = tokio::fs::remove_file(entry.path()).await;
+                }
+            }
+
             if status.success() || (playlist && downloaded_something) {
                 let final_size = if !last_size.is_empty() { last_size.clone() } else { "Completado".to_string() };
                 let _ = app.emit("download-progress", VideoProgress {
@@ -519,6 +619,9 @@ async fn start_download(
                     speed: "-".to_string(),
                     eta: "00:00".to_string(),
                     status: "Completado".to_string(),
+                    current_item: current_item_num.clone(),
+                    total_items: total_items_num.clone(),
+                    item_title: current_video_title.clone(),
                 });
                 Ok(())
             } else {

@@ -9,10 +9,18 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { 
   Download, Settings, ClipboardPaste, 
   CheckCircle2, Folder, Film, MonitorPlay, 
-  Video, Music, HardDrive, Clock, Globe, X, AlertCircle, Info, Trash2
+  Video, Music, HardDrive, Clock, Globe, X, AlertCircle, Info, Trash2,
+  ListVideo, ShieldCheck, Zap, Sparkles, Loader2
 } from "lucide-react";
 import { downloadDir } from '@tauri-apps/api/path';
 import { readText } from '@tauri-apps/plugin-clipboard-manager';
+
+interface QueueItem {
+  index: number;
+  title: string;
+  status: 'completed' | 'downloading' | 'pending';
+  percent: number;
+}
 
 function App() {
   const [url, setUrl] = useState("");
@@ -32,6 +40,15 @@ function App() {
   const [progress, setProgress] = useState(0);
   const [playlist, setPlaylist] = useState(false);
   const [stats, setStats] = useState({ downloaded: "", size: "0 MB", speed: "0 MB/s", eta: "--:--", status: "" });
+  const [playlistQueue, setPlaylistQueue] = useState<{
+    currentItem: number;
+    totalItems: number;
+    items: QueueItem[];
+  }>({
+    currentItem: 0,
+    totalItems: 0,
+    items: []
+  });
   const [lastDownload, setLastDownload] = useState<any>(() => {
     try {
       return JSON.parse(localStorage.getItem('vplus_last_download') || 'null');
@@ -52,12 +69,29 @@ function App() {
   const [versions, setVersions] = useState({ yt_dlp: "Cargando...", ffmpeg: "Cargando..." });
 
   useEffect(() => {
-    if (showNotification) {
-      const timer = setTimeout(() => {
-        setShowNotification(false);
-      }, 6000);
-      return () => clearTimeout(timer);
-    }
+    if (!showNotification) return;
+
+    const timer = setTimeout(() => {
+      setShowNotification(false);
+    }, 7000);
+
+    const handleGlobalClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('#btn-notification-open-folder')) {
+        return;
+      }
+      setShowNotification(false);
+    };
+
+    const timeoutId = setTimeout(() => {
+      window.addEventListener('click', handleGlobalClick);
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(timeoutId);
+      window.removeEventListener('click', handleGlobalClick);
+    };
   }, [showNotification]);
 
   useEffect(() => {
@@ -77,6 +111,43 @@ function App() {
         eta: p.eta,
         status: p.status
       });
+
+      if (p.current_item && p.total_items) {
+        const cur = parseInt(p.current_item, 10);
+        const tot = parseInt(p.total_items, 10);
+        if (!isNaN(cur) && !isNaN(tot)) {
+          setPlaylistQueue(prev => {
+            const items = [...prev.items];
+            while (items.length < tot) {
+              const idx = items.length + 1;
+              items.push({
+                index: idx,
+                title: idx === cur && p.item_title ? p.item_title : `Elemento #${idx}`,
+                status: idx < cur ? 'completed' : (idx === cur ? 'downloading' : 'pending'),
+                percent: idx < cur ? 100 : 0
+              });
+            }
+            if (items[cur - 1]) {
+              if (p.item_title && (items[cur - 1].title.startsWith('Elemento #') || !items[cur - 1].title)) {
+                items[cur - 1].title = p.item_title;
+              }
+              items[cur - 1].status = 'downloading';
+              items[cur - 1].percent = p.percent;
+            }
+            for (let i = 0; i < cur - 1; i++) {
+              if (items[i] && items[i].status !== 'completed') {
+                items[i].status = 'completed';
+                items[i].percent = 100;
+              }
+            }
+            return {
+              currentItem: cur,
+              totalItems: tot,
+              items
+            };
+          });
+        }
+      }
     });
 
     // Iniciar copia de motores de resources a local app data
@@ -141,7 +212,7 @@ function App() {
         if (response.ok) {
           const data = await response.json();
           const remoteTag = data.tag_name || "";
-          const currentVersion = "v1.0.15";
+          const currentVersion = "v1.0.16";
           
           if (remoteTag && remoteTag !== currentVersion) {
             updateFound = true;
@@ -157,7 +228,7 @@ function App() {
       }
 
       if (!updateFound) {
-        setEngineStatus("Ya tienes la última versión (v1.0.15) ✅");
+        setEngineStatus("Ya tienes la última versión (v1.0.16) ✅");
       }
     } catch (e: any) {
       console.error(e);
@@ -360,6 +431,7 @@ function App() {
     setDownloading(true);
     setDownloadError("");
     setProgress(0);
+    setPlaylistQueue({ currentItem: 0, totalItems: 0, items: [] });
     setStats({ downloaded: "", size: "Calculando...", speed: "-", eta: "--:--", status: "Iniciando..." });
 
     try {
@@ -375,6 +447,15 @@ function App() {
       // Se ejecuta ÚNICAMENTE al terminar exitosamente el proceso completo de descarga
       setProgress(100);
       setStats(prev => ({ ...prev, status: "Completado", speed: "-", eta: "00:00" }));
+      setPlaylistQueue(prev => {
+        if (prev.items.length > 0) {
+          return {
+            ...prev,
+            items: prev.items.map(it => ({ ...it, status: 'completed' as const, percent: 100 }))
+          };
+        }
+        return prev;
+      });
 
       const current = activeDownloadRef.current;
       const finalInfo = {
@@ -408,6 +489,7 @@ function App() {
     } finally {
       setDownloading(false);
       setProgress(0);
+      setPlaylistQueue({ currentItem: 0, totalItems: 0, items: [] });
       setStats({ downloaded: "", size: "0 MB", speed: "-", eta: "--:--", status: "Descarga cancelada" });
     }
   };
@@ -477,7 +559,9 @@ function App() {
             <div className="flex items-center gap-2 shrink-0">
               {lastDownload?.destFolder && (
                 <button
-                  onClick={() => {
+                  id="btn-notification-open-folder"
+                  onClick={(e) => {
+                    e.stopPropagation();
                     invoke("open_folder", { path: lastDownload.destFolder }).catch(() => {
                       openUrl(`file://${lastDownload.destFolder}`).catch(() => {});
                     });
@@ -532,7 +616,7 @@ function App() {
                 </div>
                 <div>
                   <h3 className="font-bold text-zinc-100 text-lg">VideoPlus</h3>
-                  <p className="text-xs text-zinc-400 font-mono">v1.0.15</p>
+                  <p className="text-xs text-zinc-400 font-mono">v1.0.16</p>
                 </div>
               </div>
               
@@ -1067,6 +1151,140 @@ function App() {
               </button>
             )}
           </div>
+
+          {/* Playlist Queue Card (Visible when downloading or tracking playlist items) */}
+          <AnimatePresence>
+            {playlistQueue.items.length > 0 && (
+              <motion.div 
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="bg-zinc-900/90 border border-violet-500/30 rounded-2xl p-4 shadow-xl backdrop-blur-xl flex flex-col gap-3"
+              >
+                <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-violet-600/20 border border-violet-500/30 flex items-center justify-center text-violet-400">
+                      <ListVideo size={18} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
+                        Cola de Descarga de Playlist
+                        <span className="text-[11px] font-mono bg-violet-950 text-violet-300 px-2 py-0.5 rounded-full border border-violet-500/30">
+                          {playlistQueue.currentItem} / {playlistQueue.totalItems} videos
+                        </span>
+                      </h3>
+                      <p className="text-xs text-zinc-400">
+                        {playlistQueue.currentItem > 0 && playlistQueue.currentItem <= playlistQueue.totalItems 
+                          ? `Descargando elemento ${playlistQueue.currentItem} de ${playlistQueue.totalItems}...` 
+                          : "Procesando lista..."}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <span className="text-xs font-mono font-semibold text-violet-400">
+                      {Math.round(((Math.max(0, playlistQueue.currentItem - 1) + (progress / 100)) / Math.max(playlistQueue.totalItems, 1)) * 100)}% Global
+                    </span>
+                  </div>
+                </div>
+
+                {/* Overall playlist progress */}
+                <div className="h-1.5 w-full bg-zinc-950 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-violet-600 to-fuchsia-500 transition-all duration-300"
+                    style={{ width: `${Math.min(100, Math.round(((Math.max(0, playlistQueue.currentItem - 1) + (progress / 100)) / Math.max(playlistQueue.totalItems, 1)) * 100))}%` }}
+                  />
+                </div>
+
+                {/* List of items */}
+                <div className="max-h-48 overflow-y-auto pr-1 flex flex-col gap-1.5 scrollbar-thin">
+                  {playlistQueue.items.map((item) => (
+                    <div 
+                      key={item.index} 
+                      className={`flex items-center justify-between p-2 rounded-xl border text-xs transition-colors ${
+                        item.status === 'downloading'
+                          ? 'bg-violet-950/40 border-violet-500/50 text-violet-100 shadow-sm'
+                          : item.status === 'completed'
+                          ? 'bg-zinc-950/40 border-emerald-500/20 text-zinc-400'
+                          : 'bg-zinc-950/20 border-zinc-800/60 text-zinc-500'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <span className={`font-mono text-[11px] font-bold px-1.5 py-0.5 rounded ${
+                          item.status === 'downloading'
+                            ? 'bg-violet-600 text-white'
+                            : item.status === 'completed'
+                            ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-zinc-800 text-zinc-400'
+                        }`}>
+                          #{item.index < 10 ? `0${item.index}` : item.index}
+                        </span>
+                        <span className={`truncate font-medium ${item.status === 'downloading' ? 'text-zinc-100 font-semibold' : ''}`} title={item.title}>
+                          {item.title}
+                        </span>
+                      </div>
+
+                      <div className="shrink-0 ml-2">
+                        {item.status === 'downloading' && (
+                          <div className="flex items-center gap-1.5 bg-violet-600/20 text-violet-300 px-2 py-0.5 rounded-full border border-violet-500/30 font-mono text-[10px]">
+                            <Loader2 size={11} className="animate-spin text-violet-400" />
+                            <span>{progress}%</span>
+                          </div>
+                        )}
+                        {item.status === 'completed' && (
+                          <div className="flex items-center gap-1 bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30 text-[10px]">
+                            <CheckCircle2 size={11} />
+                            <span>Completado</span>
+                          </div>
+                        )}
+                        {item.status === 'pending' && (
+                          <div className="flex items-center gap-1 bg-zinc-800/60 text-zinc-400 px-2 py-0.5 rounded-full border border-zinc-700/50 text-[10px]">
+                            <Clock size={11} />
+                            <span>En cola</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* System Feature Badges (fills empty bottom space gracefully when no playlist queue) */}
+          {playlistQueue.items.length === 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1">
+              <div className="bg-zinc-900/50 border border-zinc-800/70 rounded-xl p-3 flex items-start gap-2.5 hover:border-zinc-700/70 transition-colors">
+                <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0 text-emerald-400 mt-0.5">
+                  <ShieldCheck size={15} />
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-semibold text-zinc-200">Aislamiento Temp Seguro</span>
+                  <span className="text-[11px] text-zinc-400 leading-tight mt-0.5">Fragmentos temporales aislados en AppData local para cero bloqueos en OneDrive.</span>
+                </div>
+              </div>
+
+              <div className="bg-zinc-900/50 border border-zinc-800/70 rounded-xl p-3 flex items-start gap-2.5 hover:border-zinc-700/70 transition-colors">
+                <div className="w-7 h-7 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center shrink-0 text-violet-400 mt-0.5">
+                  <Zap size={15} />
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-semibold text-zinc-200">Aceleración Multihilo</span>
+                  <span className="text-[11px] text-zinc-400 leading-tight mt-0.5">Descarga en paralelo de 4 hilos por fragmento con estabilizador de bitrate.</span>
+                </div>
+              </div>
+
+              <div className="bg-zinc-900/50 border border-zinc-800/70 rounded-xl p-3 flex items-start gap-2.5 hover:border-zinc-700/70 transition-colors">
+                <div className="w-7 h-7 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center shrink-0 text-sky-400 mt-0.5">
+                  <Sparkles size={15} />
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-semibold text-zinc-200">Soporte HLS & 4K UHD</span>
+                  <span className="text-[11px] text-zinc-400 leading-tight mt-0.5">Fusión automática de video + audio con FFmpeg en calidad original sin pérdidas.</span>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
       </main>
