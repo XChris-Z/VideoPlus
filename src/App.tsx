@@ -52,12 +52,21 @@ function App() {
   const [versions, setVersions] = useState({ yt_dlp: "Cargando...", ffmpeg: "Cargando..." });
 
   useEffect(() => {
+    if (showNotification) {
+      const timer = setTimeout(() => {
+        setShowNotification(false);
+      }, 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [showNotification]);
+
+  useEffect(() => {
     // Escuchar progreso de descarga de motores
     const unlistenEngine = listen<any>("engine-download-progress", (event) => {
       setEngineStatus(`Actualizando yt-dlp... ${event.payload.progress.toFixed(1)}%`);
     });
 
-    // Escuchar progreso del video
+    // Escuchar progreso del video (SOLO actualiza datos visuales, no interrumpe ni marca completado por sí solo)
     const unlistenVideo = listen<any>("download-progress", (event) => {
       const p = event.payload;
       setProgress(p.percent);
@@ -68,23 +77,6 @@ function App() {
         eta: p.eta,
         status: p.status
       });
-      if (p.percent === 100) {
-        setDownloading(false);
-        saveToHistory();
-        setShowNotification(true);
-        const current = activeDownloadRef.current;
-        const finalInfo = {
-          title: current.title || url,
-          url: current.url || url,
-          size: p.size && p.size !== "Completado" ? p.size : (p.downloaded || stats.size),
-          format: current.format,
-          quality: current.quality,
-          destFolder: localStorage.getItem('vplus_destFolder') || destFolder,
-          date: new Date().toISOString()
-        };
-        setLastDownload(finalInfo);
-        localStorage.setItem('vplus_last_download', JSON.stringify(finalInfo));
-      }
     });
 
     // Iniciar copia de motores de resources a local app data
@@ -149,7 +141,7 @@ function App() {
         if (response.ok) {
           const data = await response.json();
           const remoteTag = data.tag_name || "";
-          const currentVersion = "v1.0.14";
+          const currentVersion = "v1.0.15";
           
           if (remoteTag && remoteTag !== currentVersion) {
             updateFound = true;
@@ -165,7 +157,7 @@ function App() {
       }
 
       if (!updateFound) {
-        setEngineStatus("Ya tienes la última versión (v1.0.14) ✅");
+        setEngineStatus("Ya tienes la última versión (v1.0.15) ✅");
       }
     } catch (e: any) {
       console.error(e);
@@ -189,9 +181,10 @@ function App() {
     }
   };
 
-  const saveToHistory = async () => {
+  const saveToHistory = async (entry?: any) => {
     const current = activeDownloadRef.current;
-    if (!current.url) return;
+    const targetUrl = entry?.url || current.url;
+    if (!targetUrl) return;
 
     try {
       const raw: any = await invoke("get_history");
@@ -205,11 +198,11 @@ function App() {
 
       // Evitar guardar duplicado si la última descarga es idéntica en menos de 10s
       const lastEntry = currentHistory[currentHistory.length - 1];
-      if (lastEntry && lastEntry.url === current.url && (Date.now() - new Date(lastEntry.date).getTime() < 10000)) {
+      if (lastEntry && lastEntry.url === targetUrl && (Date.now() - new Date(lastEntry.date).getTime() < 10000)) {
         return;
       }
 
-      const newEntry = {
+      const newEntry = entry || {
         url: current.url,
         format: current.format,
         quality: current.quality,
@@ -272,7 +265,6 @@ function App() {
   const handlePaste = async () => {
     try {
       let text = "";
-      // 1. Lectura nativa directa con Win32 API en Rust (arboard + PowerShell fallback) - 100% inmune a restricciones de Edge WebView2
       try {
         const nativeText = await invoke<string>("read_clipboard");
         if (nativeText && nativeText.trim()) {
@@ -282,7 +274,6 @@ function App() {
         console.warn("Lectura nativa Rust aviso:", nativeErr);
       }
 
-      // 2. Respaldo plugin clipboard-manager de Tauri
       if (!text) {
         try {
           const tauriText = await readText();
@@ -294,7 +285,6 @@ function App() {
         }
       }
 
-      // 3. Respaldo API de navegador
       if (!text && navigator.clipboard && navigator.clipboard.readText) {
         try {
           const webText = await navigator.clipboard.readText();
@@ -346,8 +336,21 @@ function App() {
     }
   };
 
+  const handleFormatChange = (newFormat: string) => {
+    setFormat(newFormat);
+    if (newFormat === 'audio') {
+      if (!quality.endsWith('k') && quality !== 'audio-best') {
+        setQuality('320k');
+      }
+    } else {
+      if (quality.endsWith('k') || quality === 'audio-best') {
+        setQuality('1080p');
+      }
+    }
+  };
+
   const handleDownload = async () => {
-    if (!url) return;
+    if (!url || downloading) return;
     activeDownloadRef.current = {
       url,
       title: videoInfo?.title || url,
@@ -368,13 +371,44 @@ function App() {
         playlist: playlist,
         browser
       });
-      // Asegurar registro garantizado al completarse
-      saveToHistory();
+
+      // Se ejecuta ÚNICAMENTE al terminar exitosamente el proceso completo de descarga
+      setProgress(100);
+      setStats(prev => ({ ...prev, status: "Completado", speed: "-", eta: "00:00" }));
+
+      const current = activeDownloadRef.current;
+      const finalInfo = {
+        title: current.title || url,
+        url: current.url || url,
+        size: stats.size && stats.size !== "0 MB" && stats.size !== "Completado" && stats.size !== "Calculando..." ? stats.size : (stats.downloaded || "Completado"),
+        format: current.format,
+        quality: current.quality,
+        destFolder: localStorage.getItem('vplus_destFolder') || destFolder,
+        date: new Date().toISOString()
+      };
+      setLastDownload(finalInfo);
+      localStorage.setItem('vplus_last_download', JSON.stringify(finalInfo));
+      await saveToHistory(finalInfo);
+
+      // Activar notificación una sola vez
+      setShowNotification(true);
     } catch (error: any) {
-      console.error(error);
+      console.error("Error en descarga:", error);
       setDownloadError(error.toString());
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleCancelDownload = async () => {
+    try {
+      await invoke("cancel_download");
+    } catch (err) {
+      console.error("Error cancelando descarga:", err);
+    } finally {
+      setDownloading(false);
+      setProgress(0);
+      setStats({ downloaded: "", size: "0 MB", speed: "-", eta: "--:--", status: "Descarga cancelada" });
     }
   };
 
@@ -410,28 +444,58 @@ function App() {
   return (
     <div className="h-screen max-h-screen bg-zinc-950 text-zinc-50 flex flex-col font-sans select-none relative overflow-hidden">
       <AnimatePresence>
-        {/* Non-invasive Notification */}
+        {/* Floating Non-blocking Toast Notification (Un poquitito más grande y se activa una sola vez) */}
         {showNotification && (
           <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] flex items-end justify-center pb-8 pointer-events-auto" 
-            onClick={() => setShowNotification(false)}
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 30, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 400, damping: 28 }}
+            className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] w-[92%] max-w-lg bg-zinc-900/95 border border-emerald-500/40 text-emerald-100 p-4 sm:p-5 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.8),0_0_30px_rgba(16,185,129,0.25)] flex items-center justify-between gap-4 backdrop-blur-2xl pointer-events-auto"
           >
-            <motion.div 
-              initial={{ opacity: 0, y: 50, scale: 0.8 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 30, scale: 0.9 }}
-              transition={{ type: "spring", stiffness: 400, damping: 25 }}
-              className="bg-emerald-950/70 border border-emerald-500/30 text-emerald-100 px-6 py-4 rounded-2xl shadow-[0_10px_40px_rgba(16,185,129,0.2)] flex items-center gap-4 backdrop-blur-xl cursor-pointer hover:bg-emerald-900/70 transition-colors"
-            >
-              <CheckCircle2 className="text-emerald-400" size={24} />
-              <div>
-                <h3 className="font-semibold text-emerald-300">¡Descarga Completada!</h3>
-                <p className="text-xs opacity-80">Haz clic en cualquier parte para cerrar esto.</p>
+            <div className="flex items-center gap-3.5 min-w-0 flex-1">
+              <div className="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+                <CheckCircle2 className="text-emerald-400" size={26} />
               </div>
-            </motion.div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-emerald-300 text-sm sm:text-base leading-tight">
+                    ¡Descarga Completada con Éxito!
+                  </h3>
+                  {lastDownload?.size && lastDownload.size !== "Completado" && lastDownload.size !== "0 MB" && (
+                    <span className="text-[10px] font-mono bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/30 font-semibold">
+                      {lastDownload.size}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-zinc-300 truncate mt-0.5 font-medium" title={lastDownload?.title}>
+                  {lastDownload?.title || "Archivo guardado"}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {lastDownload?.destFolder && (
+                <button
+                  onClick={() => {
+                    invoke("open_folder", { path: lastDownload.destFolder }).catch(() => {
+                      openUrl(`file://${lastDownload.destFolder}`).catch(() => {});
+                    });
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-md transition-all cursor-pointer active:scale-95"
+                  title="Abrir carpeta de destino"
+                >
+                  <Folder size={14} /> Abrir
+                </button>
+              )}
+              <button 
+                onClick={() => setShowNotification(false)}
+                className="text-zinc-400 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer"
+                title="Cerrar notificación"
+              >
+                <X size={18} />
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -468,7 +532,7 @@ function App() {
                 </div>
                 <div>
                   <h3 className="font-bold text-zinc-100 text-lg">VideoPlus</h3>
-                  <p className="text-xs text-zinc-400 font-mono">v1.0.14</p>
+                  <p className="text-xs text-zinc-400 font-mono">v1.0.15</p>
                 </div>
               </div>
               
@@ -733,13 +797,13 @@ function App() {
                 <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Formato</label>
                 <div className="flex bg-zinc-950 rounded-lg p-0.5 border border-zinc-800">
                   <button 
-                    onClick={() => setFormat('video')}
+                    onClick={() => handleFormatChange('video')}
                     className={`flex-1 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${format === 'video' ? 'bg-violet-600 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'}`}
                   >
                     <Video size={14} /> Video
                   </button>
                   <button 
-                    onClick={() => setFormat('audio')}
+                    onClick={() => handleFormatChange('audio')}
                     className={`flex-1 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${format === 'audio' ? 'bg-violet-600 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'}`}
                   >
                     <Music size={14} /> Audio
@@ -748,17 +812,31 @@ function App() {
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Calidad / Resol.</label>
+                <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
+                  {format === 'audio' ? 'Calidad de Audio' : 'Calidad / Resol.'}
+                </label>
                 <select 
                   value={quality} 
                   onChange={(e) => setQuality(e.target.value)}
                   className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 outline-none focus:border-violet-500 transition-colors"
                 >
-                  <option value="best">Máxima Posible (Best)</option>
-                  <option value="2160p">4K (2160p)</option>
-                  <option value="1080p">Full HD (1080p)</option>
-                  <option value="720p">HD (720p)</option>
-                  <option value="audio-best">Solo Audio (Alta calidad)</option>
+                  {format === 'audio' ? (
+                    <>
+                      <option value="320k">320 kbps (Máxima Calidad MP3)</option>
+                      <option value="256k">256 kbps (Muy Alta Calidad)</option>
+                      <option value="192k">192 kbps (Calidad Estándar)</option>
+                      <option value="128k">128 kbps (Ligero)</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="best">Máxima Calidad (Best)</option>
+                      <option value="2160p">4K Ultra HD (2160p)</option>
+                      <option value="1440p">2K QHD (1440p)</option>
+                      <option value="1080p">Full HD (1080p)</option>
+                      <option value="720p">HD (720p)</option>
+                      <option value="480p">SD (480p)</option>
+                    </>
+                  )}
                 </select>
               </div>
             </div>
@@ -800,20 +878,29 @@ function App() {
                   <span className={`text-xs transition-colors duration-300 ${playlist ? 'text-violet-100 font-medium' : 'text-zinc-400 group-hover:text-zinc-300'}`}>Playlist</span>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider whitespace-nowrap">Cookies:</label>
-                <select 
-                  value={browser} 
-                  onChange={(e) => setBrowser(e.target.value)}
-                  className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-violet-500 transition-colors"
-                >
-                  <option value="none">Ninguno</option>
-                  <option value="firefox">Firefox</option>
-                  <option value="chrome">Chrome</option>
-                  <option value="edge">Edge</option>
-                </select>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider whitespace-nowrap">Cookies:</label>
+                  <select 
+                    value={browser} 
+                    onChange={(e) => setBrowser(e.target.value)}
+                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-violet-500 transition-colors"
+                  >
+                    <option value="none">Ninguno</option>
+                    <option value="firefox">Firefox (Recomendado)</option>
+                    <option value="chrome">Chrome</option>
+                    <option value="edge">Edge</option>
+                  </select>
+                </div>
               </div>
             </div>
+
+            {playlist && (
+              <div className="text-[11px] text-violet-300 bg-violet-950/40 border border-violet-500/30 px-3 py-1.5 rounded-lg flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-violet-400 animate-ping shrink-0"></span>
+                <span>Modo Playlist: Aceleración multihilo (8 conexiones) y descarga perezosa activa para máxima velocidad.</span>
+              </div>
+            )}
 
           </section>
         </div>
@@ -957,18 +1044,29 @@ function App() {
           )}
           </AnimatePresence>
 
-          <button 
-            onClick={handleDownload}
-            disabled={downloading}
-            className={`w-full py-3.5 md:py-4 rounded-xl font-bold text-base md:text-lg tracking-wide flex items-center justify-center gap-3 transition-all shrink-0 ${
-              downloading 
-              ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
-              : `text-white active:scale-[0.99] ${getPlatformColor()}`
-            }`}
-          >
-            <Download size={22} />
-            {downloading ? "DESCARGANDO..." : "INICIAR DESCARGA"}
-          </button>
+          <div className="flex gap-2.5 w-full">
+            <button 
+              onClick={handleDownload}
+              disabled={downloading}
+              className={`flex-1 py-3.5 md:py-4 rounded-xl font-bold text-base md:text-lg tracking-wide flex items-center justify-center gap-3 transition-all shrink-0 ${
+                downloading 
+                ? 'bg-zinc-800 text-zinc-400 cursor-not-allowed' 
+                : `text-white active:scale-[0.99] ${getPlatformColor()}`
+              }`}
+            >
+              <Download size={22} className={downloading ? "animate-pulse" : ""} />
+              {downloading ? "DESCARGANDO..." : "INICIAR DESCARGA"}
+            </button>
+            {downloading && (
+              <button
+                onClick={handleCancelDownload}
+                className="px-5 py-3.5 md:py-4 bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/30 rounded-xl font-bold text-sm md:text-base tracking-wide flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 shadow-lg shrink-0"
+                title="Cancelar descarga inmediatamente"
+              >
+                <X size={18} /> Cancelar
+              </button>
+            )}
+          </div>
         </section>
 
       </main>
