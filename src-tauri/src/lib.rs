@@ -207,6 +207,19 @@ fn is_youtube_url(url: &str) -> bool {
     lower.contains("youtube.com") || lower.contains("youtu.be")
 }
 
+fn clean_video_title(raw_stem: &str) -> String {
+    let mut s = raw_stem.trim().to_string();
+    if let Some(dot_idx) = s.rfind('.') {
+        let suffix = &s[dot_idx + 1..];
+        let is_format_code = (suffix.len() >= 2 && suffix.len() <= 6 && (suffix.starts_with('f') || suffix.starts_with('F')) && suffix[1..].chars().all(|c| c.is_ascii_digit()))
+            || (!suffix.is_empty() && suffix.len() <= 5 && suffix.chars().all(|c| c.is_ascii_digit()));
+        if is_format_code {
+            s = s[..dot_idx].to_string();
+        }
+    }
+    s
+}
+
 #[tauri::command]
 async fn cancel_download(app: AppHandle) -> Result<(), String> {
     kill_active_process();
@@ -313,7 +326,7 @@ async fn start_download(
     }
 
     let is_yt = is_youtube_url(&url);
-    let use_cookies_initial = !is_yt && browser != "none";
+    let use_cookies_initial = browser != "none";
 
     let execute_download = |use_cookies: bool| {
         let yt_path = yt_path.clone();
@@ -355,12 +368,12 @@ async fn start_download(
 
             if !playlist {
                 cmd.arg("--no-playlist");
+                cmd.arg("--playlist-items").arg("1");
                 cmd.arg("-o").arg("%(title)s.%(ext)s");
             } else {
                 cmd.arg("--yes-playlist")
-                   .arg("--lazy-playlist")
                    .arg("--ignore-errors");
-                cmd.arg("-o").arg("%(playlist_title&{}/|)s%(playlist_index&{} - |)s%(title)s.%(ext)s");
+                cmd.arg("-o").arg("%(title)s.%(ext)s");
             }
 
             if format == "audio" {
@@ -446,17 +459,53 @@ async fn start_download(
                             current_item_num = Some(split_parts[0].trim().to_string());
                             total_items_num = Some(split_parts[1].trim().to_string());
                             playlist_item_status = format!("Elemento {} de {}", split_parts[0].trim(), split_parts[1].trim());
+                        } else if split_parts.len() == 1 {
+                            current_item_num = Some(split_parts[0].trim().to_string());
+                            playlist_item_status = format!("Elemento {}", split_parts[0].trim());
                         }
+                    }
+
+                    // Resetear estadísticas para el nuevo elemento y no arrastrar 100% ni el título del video anterior
+                    last_percent = 0.0;
+                    stable_size_val = 0.0;
+                    stable_size_unit.clear();
+                    last_size.clear();
+                    last_downloaded.clear();
+                    current_video_title = None;
+
+                    if playlist {
+                        let _ = app.emit("download-progress", VideoProgress {
+                            percent: 0.0,
+                            downloaded: "0 MB".to_string(),
+                            size: "Calculando...".to_string(),
+                            speed: "-".to_string(),
+                            eta: "--:--".to_string(),
+                            status: format!("Iniciando {}...", playlist_item_status),
+                            current_item: current_item_num.clone(),
+                            total_items: total_items_num.clone(),
+                            item_title: None,
+                        });
                     }
                 } else if line.contains("Destination: ") {
                     if let Some(idx) = line.find("Destination: ") {
-                        let path_str = line[idx + 13..].trim();
+                        let path_str = line[idx + 13..].trim().trim_matches('"');
                         let path = std::path::Path::new(path_str);
                         if let Some(file_name) = path.file_stem() {
-                            current_video_title = Some(file_name.to_string_lossy().to_string());
+                            current_video_title = Some(clean_video_title(&file_name.to_string_lossy()));
+                        }
+                    }
+                } else if line.contains("Merging formats into ") {
+                    if let Some(idx) = line.find("Merging formats into ") {
+                        let path_str = line[idx + 21..].trim().trim_matches('"');
+                        let path = std::path::Path::new(path_str);
+                        if let Some(file_name) = path.file_stem() {
+                            current_video_title = Some(clean_video_title(&file_name.to_string_lossy()));
                         }
                     }
                 }
+
+                let cur_item = if playlist { current_item_num.clone() } else { None };
+                let tot_item = if playlist { total_items_num.clone() } else { None };
 
                 if line.starts_with("[download]") && line.contains("%") {
                     downloaded_something = true;
@@ -533,7 +582,7 @@ async fn start_download(
                         last_downloaded = downloaded.clone();
                     }
 
-                    let status_text = if !playlist_item_status.is_empty() {
+                    let status_text = if playlist && !playlist_item_status.is_empty() {
                         format!("Descargando {}...", playlist_item_status)
                     } else {
                         "Descargando...".to_string()
@@ -550,8 +599,8 @@ async fn start_download(
                             speed,
                             eta,
                             status: status_text,
-                            current_item: current_item_num.clone(),
-                            total_items: total_items_num.clone(),
+                            current_item: cur_item.clone(),
+                            total_items: tot_item.clone(),
                             item_title: current_video_title.clone(),
                         });
                     }
@@ -563,12 +612,22 @@ async fn start_download(
                         speed: "-".to_string(),
                         eta: "-".to_string(),
                         status: "Fusionando pistas...".to_string(),
-                        current_item: current_item_num.clone(),
-                        total_items: total_items_num.clone(),
+                        current_item: cur_item.clone(),
+                        total_items: tot_item.clone(),
                         item_title: current_video_title.clone(),
                     });
                 } else if line.contains("has already been downloaded") {
                     downloaded_something = true;
+                    if let Some(idx) = line.find("[download] ") {
+                        let rest = &line[idx + 11..];
+                        if let Some(end_idx) = rest.find(" has already been downloaded") {
+                            let path_str = rest[..end_idx].trim().trim_matches('"');
+                            let path = std::path::Path::new(path_str);
+                            if let Some(file_name) = path.file_stem() {
+                                current_video_title = Some(clean_video_title(&file_name.to_string_lossy()));
+                            }
+                        }
+                    }
                     let completed_size = if !last_size.is_empty() { last_size.clone() } else { "Completado".to_string() };
                     let _ = app.emit("download-progress", VideoProgress {
                         percent: 100.0,
@@ -577,8 +636,8 @@ async fn start_download(
                         speed: "-".to_string(),
                         eta: "-".to_string(),
                         status: "Ya descargado".to_string(),
-                        current_item: current_item_num.clone(),
-                        total_items: total_items_num.clone(),
+                        current_item: cur_item.clone(),
+                        total_items: tot_item.clone(),
                         item_title: current_video_title.clone(),
                     });
                 } else if line.contains("[ExtractInfo]") || line.contains("Extracting URL") {
@@ -589,8 +648,8 @@ async fn start_download(
                         speed: "-".to_string(),
                         eta: "-".to_string(),
                         status: "Extrayendo metadatos...".to_string(),
-                        current_item: current_item_num.clone(),
-                        total_items: total_items_num.clone(),
+                        current_item: cur_item.clone(),
+                        total_items: tot_item.clone(),
                         item_title: current_video_title.clone(),
                     });
                 }
@@ -619,8 +678,8 @@ async fn start_download(
                     speed: "-".to_string(),
                     eta: "00:00".to_string(),
                     status: "Completado".to_string(),
-                    current_item: current_item_num.clone(),
-                    total_items: total_items_num.clone(),
+                    current_item: if playlist { current_item_num.clone() } else { None },
+                    total_items: if playlist { total_items_num.clone() } else { None },
                     item_title: current_video_title.clone(),
                 });
                 Ok(())

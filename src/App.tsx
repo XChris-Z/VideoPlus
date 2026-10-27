@@ -112,13 +112,14 @@ function App() {
         status: p.status
       });
 
-      if (p.current_item && p.total_items) {
+      if (p.current_item) {
         const cur = parseInt(p.current_item, 10);
-        const tot = parseInt(p.total_items, 10);
-        if (!isNaN(cur) && !isNaN(tot)) {
+        const tot = p.total_items ? parseInt(p.total_items, 10) : cur;
+        if (!isNaN(cur) && cur > 0) {
           setPlaylistQueue(prev => {
+            const finalTot = Math.max(tot, cur, prev.totalItems);
             const items = [...prev.items];
-            while (items.length < tot) {
+            while (items.length < finalTot) {
               const idx = items.length + 1;
               items.push({
                 index: idx,
@@ -128,21 +129,21 @@ function App() {
               });
             }
             if (items[cur - 1]) {
-              if (p.item_title && (items[cur - 1].title.startsWith('Elemento #') || !items[cur - 1].title)) {
+              if (p.item_title) {
                 items[cur - 1].title = p.item_title;
               }
-              items[cur - 1].status = 'downloading';
+              items[cur - 1].status = p.percent >= 100 ? 'completed' : 'downloading';
               items[cur - 1].percent = p.percent;
             }
             for (let i = 0; i < cur - 1; i++) {
-              if (items[i] && items[i].status !== 'completed') {
+              if (items[i]) {
                 items[i].status = 'completed';
                 items[i].percent = 100;
               }
             }
             return {
               currentItem: cur,
-              totalItems: tot,
+              totalItems: finalTot,
               items
             };
           });
@@ -212,7 +213,7 @@ function App() {
         if (response.ok) {
           const data = await response.json();
           const remoteTag = data.tag_name || "";
-          const currentVersion = "v1.0.16";
+          const currentVersion = "v1.0.17";
           
           if (remoteTag && remoteTag !== currentVersion) {
             updateFound = true;
@@ -228,7 +229,7 @@ function App() {
       }
 
       if (!updateFound) {
-        setEngineStatus("Ya tienes la última versión (v1.0.16) ✅");
+        setEngineStatus("Ya tienes la última versión (v1.0.17) ✅");
       }
     } catch (e: any) {
       console.error(e);
@@ -616,7 +617,7 @@ function App() {
                 </div>
                 <div>
                   <h3 className="font-bold text-zinc-100 text-lg">VideoPlus</h3>
-                  <p className="text-xs text-zinc-400 font-mono">v1.0.16</p>
+                  <p className="text-xs text-zinc-400 font-mono">v1.0.17</p>
                 </div>
               </div>
               
@@ -746,123 +747,126 @@ function App() {
         </button>
       </div>
 
-      <main className="flex-1 min-h-0 overflow-y-auto px-6 py-3.5 flex flex-col gap-3.5 max-w-[1200px] mx-auto w-full">
+      <main className="flex-1 min-h-0 overflow-y-auto px-6 sm:px-10 lg:px-14 py-4 md:py-6 flex flex-col gap-5 max-w-[1550px] mx-auto w-full">
         
         {/* BIG TITLE & DESCRIPTION */}
-        <div className="flex justify-between items-center mb-0.5">
-          <div className="flex flex-col gap-1">
-            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white uppercase drop-shadow-md">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-1">
+          <div className="flex flex-col gap-1.5">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight text-white uppercase drop-shadow-md">
               Universal Video Downloader
             </h1>
             <div className="flex flex-wrap items-center gap-2 text-xs md:text-sm text-zinc-400">
               <span>Descarga de</span>
-              <span className="flex items-center gap-1 text-zinc-300"><Globe size={13}/> YouTube,</span>
+              <span className="flex items-center gap-1 text-zinc-300"><Globe size={14}/> YouTube,</span>
               <span className="flex items-center gap-1 text-zinc-300">Instagram,</span>
               <span className="flex items-center gap-1 text-zinc-300">X/Twitter,</span>
               <span className="flex items-center gap-1 text-zinc-300">Facebook y más.</span>
             </div>
           </div>
-          <div className="flex flex-col gap-1.5 items-end">
+          <div className="flex flex-col sm:flex-row gap-2 items-start md:items-end">
             <div className="flex gap-2">
-              <button onClick={handleUpdateEngines} disabled={updatingEngines} className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md transition-all text-xs shadow-sm disabled:opacity-50 border border-zinc-700 cursor-pointer active:scale-95">
+              <button onClick={handleUpdateEngines} disabled={updatingEngines} className="flex items-center gap-2 px-3.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl transition-all text-xs font-semibold shadow-sm disabled:opacity-50 border border-zinc-700 cursor-pointer active:scale-95">
                 {updatingEngines ? "Actualizando..." : "Actualizar Motor"}
               </button>
-              <button onClick={handleUpdateApp} disabled={updatingApp} className="flex items-center gap-2 px-3 py-1.5 bg-violet-600/20 hover:bg-violet-600/40 text-violet-300 border border-violet-500/30 rounded-md transition-all text-xs shadow-sm disabled:opacity-50 cursor-pointer active:scale-95">
+              <button onClick={handleUpdateApp} disabled={updatingApp} className="flex items-center gap-2 px-3.5 py-2 bg-violet-600/20 hover:bg-violet-600/40 text-violet-300 border border-violet-500/30 rounded-xl transition-all text-xs font-semibold shadow-sm disabled:opacity-50 cursor-pointer active:scale-95">
                 {updatingApp ? "Buscando..." : "Actualizar App"}
               </button>
             </div>
-            <button onClick={() => setShowHistory(true)} className="flex items-center gap-2 px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-md border border-zinc-700 transition-all font-medium text-xs shadow-sm w-full justify-center cursor-pointer active:scale-95">
-              Ver Historial
+            <button onClick={() => setShowHistory(true)} className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl border border-zinc-700 transition-all font-semibold text-xs shadow-sm cursor-pointer active:scale-95">
+              <Clock size={14} /> Ver Historial
             </button>
           </div>
         </div>
 
-        {/* URL Input Section */}
-        <section className={`bg-zinc-900 px-3 py-0.5 rounded-xl border border-zinc-800 flex items-center shadow-lg transition-colors ${getPlatformGlow()}`}>
-          <div className="px-2 text-zinc-500">
-            <Film size={18} />
+        {/* URL Input Section (Más grande, espaciosa y con botones destacados) */}
+        <section className={`bg-zinc-900/95 px-4 py-2.5 md:py-3 rounded-2xl border border-zinc-800 flex items-center shadow-2xl transition-all ${getPlatformGlow()}`}>
+          <div className="pl-1 pr-3 text-zinc-400 shrink-0">
+            <Film size={22} className="text-violet-400" />
           </div>
           <input 
             type="text" 
             value={url}
             onChange={handleUrlChange}
-            placeholder="Pega la URL del video aquí (YouTube, TikTok, Twitter...)" 
-            className="flex-1 bg-transparent border-none outline-none text-zinc-100 placeholder:text-zinc-600 py-2.5 text-sm"
+            placeholder="Pega la URL del video o canción aquí (YouTube, TikTok, Twitter...)" 
+            className="flex-1 bg-transparent border-none outline-none text-zinc-100 placeholder:text-zinc-500 py-2.5 md:py-3 text-base md:text-lg font-medium min-w-0"
           />
           {url && (
-            <div className="px-2.5 flex items-center gap-1 text-xs font-medium text-emerald-500 bg-emerald-500/10 rounded-full py-1 mr-2">
-              <CheckCircle2 size={13} /> Listo
+            <div className="px-3 py-1.5 flex items-center gap-1.5 text-xs md:text-sm font-semibold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 rounded-xl mr-2.5 shrink-0">
+              <CheckCircle2 size={16} /> Listo
             </div>
           )}
           <button 
             onClick={() => { setUrl(""); setVideoInfo(null); setInfoError(""); setProgress(0); setDownloadError(""); }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800/50 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 rounded-lg mr-2 transition-all font-medium text-xs cursor-pointer active:scale-95"
+            className="flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white rounded-xl mr-2.5 transition-all font-semibold text-xs md:text-sm cursor-pointer active:scale-95 border border-zinc-700/60 shadow-sm shrink-0"
+            title="Limpiar enlace"
           >
-            <X size={14} /> Limpiar
+            <X size={16} /> Limpiar
           </button>
           <button 
             type="button"
             onClick={handlePaste}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg mr-1 transition-all font-medium text-xs cursor-pointer active:scale-95 border ${
+            className={`flex items-center gap-2 px-5 md:px-6 py-2.5 md:py-3 rounded-xl mr-1 transition-all font-bold text-xs md:text-sm cursor-pointer active:scale-95 border shadow-md shrink-0 ${
               pasteStatus === 'pasted'
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.3)]' 
+                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.3)]' 
                 : pasteStatus === 'empty'
                 ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700/60 shadow-sm'
+                : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white border-violet-500/50 shadow-violet-600/30'
             }`}
             title="Pegar enlace del portapapeles"
           >
             {pasteStatus === 'pasted' ? (
               <>
-                <CheckCircle2 size={14} className="text-emerald-400" />
-                <span className="font-semibold text-emerald-300">¡Pegado!</span>
+                <CheckCircle2 size={18} className="text-emerald-400" />
+                <span>¡Pegado!</span>
               </>
             ) : pasteStatus === 'empty' ? (
               <>
-                <AlertCircle size={14} className="text-amber-400" />
-                <span className="font-semibold text-amber-300">¡Vacío!</span>
+                <AlertCircle size={18} className="text-amber-400" />
+                <span>¡Vacío!</span>
               </>
             ) : (
               <>
-                <ClipboardPaste size={14} className="text-violet-400" />
+                <ClipboardPaste size={18} className="text-white" />
                 <span>Pegar</span>
               </>
             )}
           </button>
         </section>
 
-        {/* Layout Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+        {/* Layout Grid (Mejor aprovechamiento horizontal y espacio equilibrado) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 md:gap-6">
           
           {/* Preview Card */}
-          <section className="md:col-span-5 bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex flex-col shadow-lg relative group">
-            <div className="aspect-video max-h-[160px] bg-zinc-950 flex items-center justify-center relative overflow-hidden">
+          <section className="lg:col-span-5 bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col shadow-xl relative group">
+            <div className="aspect-video min-h-[190px] max-h-[250px] bg-zinc-950 flex items-center justify-center relative overflow-hidden">
               {videoInfo?.thumbnail ? (
                 <img src={videoInfo.thumbnail} alt="Video thumbnail" className="w-full h-full object-cover" />
               ) : (
-                <MonitorPlay size={44} className={loadingInfo ? "text-violet-500 animate-pulse" : "text-zinc-800"} />
+                <MonitorPlay size={50} className={loadingInfo ? "text-violet-500 animate-pulse" : "text-zinc-800"} />
               )}
               {/* Overlay on hover or when image is present */}
               <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 to-transparent opacity-60"></div>
-              <div className="absolute bottom-2 right-2 bg-black/80 px-2 py-0.5 rounded text-[11px] text-zinc-300 font-mono flex items-center gap-1 border border-zinc-800">
-                <Clock size={11} /> {videoInfo?.duration || "--:--"}
+              <div className="absolute bottom-2.5 right-2.5 bg-black/80 px-2.5 py-1 rounded-md text-xs text-zinc-300 font-mono flex items-center gap-1.5 border border-zinc-800">
+                <Clock size={13} /> {videoInfo?.duration || "--:--"}
               </div>
             </div>
-            <div className="p-3 flex-1 flex flex-col gap-1">
-              <h3 className="font-semibold text-xs md:text-sm text-zinc-200 line-clamp-2 leading-tight">
-                {loadingInfo ? "Cargando información..." : (videoInfo?.title || "Esperando video...")}
-              </h3>
-              <div className="flex items-center justify-between mt-0.5">
-                <p className="text-xs text-violet-400 font-medium">
-                  {videoInfo?.uploader || "Autor / Canal"}
-                </p>
-                {history.some(h => h.url === url) && (
-                  <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30">Ya descargado</span>
-                )}
+            <div className="p-4 md:p-5 flex-1 flex flex-col justify-between gap-2.5">
+              <div>
+                <h3 className="font-bold text-sm md:text-base text-zinc-100 line-clamp-2 leading-snug">
+                  {loadingInfo ? "Cargando información..." : (videoInfo?.title || "Esperando video...")}
+                </h3>
+                <div className="flex items-center justify-between mt-2">
+                  <p className="text-xs md:text-sm text-violet-400 font-semibold truncate pr-2">
+                    {videoInfo?.uploader || "Autor / Canal"}
+                  </p>
+                  {history.some(h => h.url === url) && (
+                    <span className="text-[11px] bg-emerald-500/20 text-emerald-400 px-2.5 py-0.5 rounded-full border border-emerald-500/30 shrink-0 font-medium">Ya descargado</span>
+                  )}
+                </div>
               </div>
               {infoError && (
-                <div className="mt-1 text-xs text-red-400 bg-red-500/10 p-2 rounded border border-red-500/20 max-h-20 overflow-y-auto">
-                  <span className="font-semibold flex items-center gap-1"><AlertCircle size={13}/> Error de extracción:</span>
+                <div className="mt-2 text-xs text-red-400 bg-red-500/10 p-2.5 rounded-xl border border-red-500/20 max-h-24 overflow-y-auto">
+                  <span className="font-semibold flex items-center gap-1.5"><AlertCircle size={14}/> Error de extracción:</span>
                   <span className="font-mono mt-0.5 opacity-80 text-[11px]">{infoError}</span>
                 </div>
               )}
@@ -870,39 +874,39 @@ function App() {
           </section>
 
           {/* Options Panel */}
-          <section className="md:col-span-7 bg-zinc-900 border border-zinc-800 rounded-xl p-3.5 shadow-lg flex flex-col gap-3">
-            <div className="flex items-center gap-2 pb-2 border-b border-zinc-800/50">
-              <Settings size={16} className="text-violet-500" />
-              <h2 className="font-semibold text-sm text-zinc-200">Configuración de Descarga</h2>
+          <section className="lg:col-span-7 bg-zinc-900 border border-zinc-800 rounded-2xl p-5 md:p-6 shadow-xl flex flex-col justify-between gap-4">
+            <div className="flex items-center gap-2.5 pb-3 border-b border-zinc-800/60">
+              <Settings size={20} className="text-violet-500" />
+              <h2 className="font-bold text-base text-zinc-100">Configuración de Descarga</h2>
             </div>
             
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Formato</label>
-                <div className="flex bg-zinc-950 rounded-lg p-0.5 border border-zinc-800">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Formato</label>
+                <div className="flex bg-zinc-950 rounded-xl p-1 border border-zinc-800">
                   <button 
                     onClick={() => handleFormatChange('video')}
-                    className={`flex-1 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${format === 'video' ? 'bg-violet-600 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    className={`flex-1 py-2 rounded-lg text-xs md:text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${format === 'video' ? 'bg-violet-600 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'}`}
                   >
-                    <Video size={14} /> Video
+                    <Video size={16} /> Video
                   </button>
                   <button 
                     onClick={() => handleFormatChange('audio')}
-                    className={`flex-1 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${format === 'audio' ? 'bg-violet-600 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    className={`flex-1 py-2 rounded-lg text-xs md:text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${format === 'audio' ? 'bg-violet-600 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'}`}
                   >
-                    <Music size={14} /> Audio
+                    <Music size={16} /> Audio
                   </button>
                 </div>
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
                   {format === 'audio' ? 'Calidad de Audio' : 'Calidad / Resol.'}
                 </label>
                 <select 
                   value={quality} 
                   onChange={(e) => setQuality(e.target.value)}
-                  className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 outline-none focus:border-violet-500 transition-colors"
+                  className="bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs md:text-sm text-zinc-200 outline-none focus:border-violet-500 transition-colors"
                 >
                   {format === 'audio' ? (
                     <>
@@ -925,50 +929,53 @@ function App() {
               </div>
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Destino</label>
-              <div className="flex gap-2">
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Destino</label>
+              <div className="flex gap-2.5">
                 <input 
                   type="text" 
                   readOnly 
                   value={destFolder}
-                  className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-zinc-400 outline-none"
+                  className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs md:text-sm text-zinc-400 outline-none truncate"
                 />
                 <button 
                   onClick={handleSelectFolder}
-                  className="p-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 transition-all text-zinc-300 cursor-pointer active:scale-95"
+                  className="px-3.5 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl border border-zinc-700 transition-all text-zinc-200 cursor-pointer active:scale-95 flex items-center gap-1.5 text-xs md:text-sm font-medium shrink-0"
                   title="Seleccionar carpeta"
                 >
-                  <Folder size={15} />
+                  <Folder size={17} /> Cambiar
                 </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 mt-0.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-1">
               <div 
-                className={`flex items-center justify-between p-2 rounded-lg border transition-all duration-300 cursor-pointer group select-none ${playlist ? 'bg-violet-900/30 border-violet-500/50 shadow-[0_0_15px_rgba(139,92,246,0.15)]' : 'bg-zinc-950/50 border-zinc-800/50 hover:border-zinc-700'}`}
+                className={`flex items-center justify-between p-3 rounded-xl border transition-all duration-300 cursor-pointer group select-none ${playlist ? 'bg-violet-900/30 border-violet-500/50 shadow-[0_0_15px_rgba(139,92,246,0.15)]' : 'bg-zinc-950/60 border-zinc-800/80 hover:border-zinc-700'}`}
                 onClick={() => setPlaylist(!playlist)}
               >
-                <div className="flex items-center gap-2.5">
-                  <div className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-300 ease-in-out flex items-center ${playlist ? 'bg-violet-500' : 'bg-zinc-700'}`}>
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-6 rounded-full p-0.5 transition-colors duration-300 ease-in-out flex items-center ${playlist ? 'bg-violet-500' : 'bg-zinc-700'}`}>
                     <motion.div 
                       layout
                       initial={false}
                       animate={{ x: playlist ? 16 : 0 }}
                       transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                      className="w-4 h-4 bg-white rounded-full shadow-md"
+                      className="w-5 h-5 bg-white rounded-full shadow-md"
                     />
                   </div>
-                  <span className={`text-xs transition-colors duration-300 ${playlist ? 'text-violet-100 font-medium' : 'text-zinc-400 group-hover:text-zinc-300'}`}>Playlist</span>
+                  <div>
+                    <span className={`text-xs md:text-sm transition-colors duration-300 block font-semibold ${playlist ? 'text-violet-100' : 'text-zinc-400 group-hover:text-zinc-300'}`}>Playlist</span>
+                    <span className="text-[11px] text-zinc-500 block leading-tight">{playlist ? 'Descargar lista completa' : 'Descargar solo video individual'}</span>
+                  </div>
                 </div>
               </div>
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider whitespace-nowrap">Cookies:</label>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-2 h-full">
+                  <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider whitespace-nowrap">Cookies:</label>
                   <select 
                     value={browser} 
                     onChange={(e) => setBrowser(e.target.value)}
-                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-violet-500 transition-colors"
+                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs md:text-sm text-zinc-200 outline-none focus:border-violet-500 transition-colors"
                   >
                     <option value="none">Ninguno</option>
                     <option value="firefox">Firefox (Recomendado)</option>
@@ -980,9 +987,9 @@ function App() {
             </div>
 
             {playlist && (
-              <div className="text-[11px] text-violet-300 bg-violet-950/40 border border-violet-500/30 px-3 py-1.5 rounded-lg flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-violet-400 animate-ping shrink-0"></span>
-                <span>Modo Playlist: Aceleración multihilo (8 conexiones) y descarga perezosa activa para máxima velocidad.</span>
+              <div className="text-xs text-violet-300 bg-violet-950/40 border border-violet-500/30 px-3.5 py-2.5 rounded-xl flex items-center gap-2.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-violet-400 animate-ping shrink-0"></span>
+                <span>Modo Playlist Activo: Se descargarán las canciones conservando sus nombres originales sin modificaciones.</span>
               </div>
             )}
 
@@ -990,47 +997,47 @@ function App() {
         </div>
 
         {/* Action Section */}
-        <section className="flex flex-col gap-2.5 mt-0.5">
+        <section className="flex flex-col gap-3 mt-1">
           {/* Permanent Last Download Card */}
           {lastDownload && !downloading && (
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex items-center justify-between p-3.5 bg-zinc-900/80 border border-emerald-500/25 rounded-2xl backdrop-blur-xl shadow-lg hover:border-emerald-500/40 transition-colors w-full min-w-0"
+              className="flex items-center justify-between p-4 bg-zinc-900/80 border border-emerald-500/25 rounded-2xl backdrop-blur-xl shadow-lg hover:border-emerald-500/40 transition-colors w-full min-w-0"
             >
-              <div className="flex items-center gap-3 overflow-hidden pr-2 min-w-0 flex-1">
-                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0 shadow-inner">
-                  <CheckCircle2 size={18} className="text-emerald-400" />
+              <div className="flex items-center gap-3.5 overflow-hidden pr-2 min-w-0 flex-1">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0 shadow-inner">
+                  <CheckCircle2 size={20} className="text-emerald-400" />
                 </div>
                 <div className="flex flex-col min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                       Último video descargado
                     </span>
                     {lastDownload.size && lastDownload.size !== "0 MB" && (
-                      <span className="text-[11px] font-mono bg-zinc-800 text-violet-300 px-2 py-0.5 rounded font-semibold border border-violet-500/20">
+                      <span className="text-xs font-mono bg-zinc-800 text-violet-300 px-2 py-0.5 rounded-md font-semibold border border-violet-500/20">
                         {lastDownload.size}
                       </span>
                     )}
                   </div>
                   <span 
-                    className="text-sm font-semibold text-zinc-100 truncate mt-0.5 select-text" 
+                    className="text-sm md:text-base font-semibold text-zinc-100 truncate mt-0.5 select-text" 
                     title={lastDownload.title}
                   >
                     {lastDownload.title}
                   </span>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400 mt-0.5 font-mono">
-                    <span className="bg-zinc-800/80 px-1.5 py-0.5 rounded text-zinc-300 text-[10px]">{lastDownload.format?.toUpperCase()}</span>
+                    <span className="bg-zinc-800/80 px-2 py-0.5 rounded text-zinc-300 text-xs font-semibold">{lastDownload.format?.toUpperCase()}</span>
                     {lastDownload.quality && (
-                      <span className="bg-zinc-800/80 px-1.5 py-0.5 rounded text-sky-300 text-[10px]">{lastDownload.quality}</span>
+                      <span className="bg-zinc-800/80 px-2 py-0.5 rounded text-sky-300 text-xs">{lastDownload.quality}</span>
                     )}
                     <span>•</span>
-                    <span className="text-zinc-400 text-[11px]">{new Date(lastDownload.date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+                    <span className="text-zinc-400 text-xs">{new Date(lastDownload.date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
                     {lastDownload.destFolder && (
                       <>
                         <span>•</span>
-                        <span className="text-zinc-500 text-[11px] truncate max-w-[280px]" title={lastDownload.destFolder}>{lastDownload.destFolder}</span>
+                        <span className="text-zinc-500 text-xs truncate max-w-[360px]" title={lastDownload.destFolder}>{lastDownload.destFolder}</span>
                       </>
                     )}
                   </div>
@@ -1044,10 +1051,10 @@ function App() {
                     });
                   }
                 }}
-                className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-semibold border border-zinc-700 transition-all shrink-0 cursor-pointer active:scale-95 flex items-center gap-1.5 shadow-sm ml-2"
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs md:text-sm font-semibold border border-zinc-700 transition-all shrink-0 cursor-pointer active:scale-95 flex items-center gap-2 shadow-sm ml-2"
                 title="Abrir carpeta de destino"
               >
-                <Folder size={14} className="text-emerald-400" /> Abrir Carpeta
+                <Folder size={16} className="text-emerald-400" /> Abrir Carpeta
               </button>
             </motion.div>
           )}
@@ -1059,15 +1066,15 @@ function App() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -10, scale: 0.95 }}
                 transition={{ type: "spring", stiffness: 350, damping: 25 }}
-                className="flex flex-col gap-3 bg-zinc-900/80 backdrop-blur-xl p-4 rounded-2xl border border-white/5 shadow-xl"
+                className="flex flex-col gap-3.5 bg-zinc-900/90 backdrop-blur-xl p-5 md:p-6 rounded-2xl border border-white/5 shadow-2xl"
               >
               {downloadError ? (
                 <div className="bg-zinc-950 border border-red-500/30 rounded-xl overflow-hidden shadow-lg">
-                  <div className="bg-red-500/10 px-4 py-2 flex items-center justify-between border-b border-red-500/20">
+                  <div className="bg-red-500/10 px-4 py-2.5 flex items-center justify-between border-b border-red-500/20">
                     <div className="font-semibold flex items-center gap-2 text-red-400 text-sm"><AlertCircle size={16}/> Logs de Error</div>
                     <button 
                       onClick={() => navigator.clipboard.writeText(downloadError)}
-                      className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 px-2 py-1 rounded transition-colors border border-red-500/30"
+                      className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 px-2.5 py-1 rounded-lg transition-colors border border-red-500/30 font-semibold"
                     >
                       Copiar Logs
                     </button>
@@ -1080,20 +1087,20 @@ function App() {
                 <>
                   <div className="flex justify-between items-end">
                     <div className="flex flex-col gap-1 overflow-hidden pr-4">
-                      <span className="text-xs font-mono text-zinc-500 mb-1">{stats.status || "Descargando..."}</span>
-                      <span className="font-semibold text-zinc-200 line-clamp-1 truncate">{videoInfo?.title || url}</span>
+                      <span className="text-xs md:text-sm font-mono text-zinc-400 mb-0.5">{stats.status || "Descargando..."}</span>
+                      <span className="font-bold text-sm md:text-base text-zinc-100 line-clamp-1 truncate">{videoInfo?.title || url}</span>
                     </div>
                     <div className="flex flex-col items-end shrink-0">
-                      <span className="text-2xl font-bold text-zinc-100 font-mono">{progress > 0 ? `${progress}%` : '...'}</span>
+                      <span className="text-2xl md:text-3xl font-extrabold text-zinc-100 font-mono">{progress > 0 ? `${progress}%` : '...'}</span>
                       {stats.downloaded && stats.size && stats.size !== "0 MB" && stats.size !== "Completado" && (
-                        <span className="text-xs font-mono text-violet-300 font-semibold">
+                        <span className="text-xs md:text-sm font-mono text-violet-300 font-semibold mt-0.5">
                           {stats.downloaded} / {stats.size}
                         </span>
                       )}
                     </div>
                   </div>
                   
-                  <div className="h-1.5 w-full bg-zinc-950 rounded-full overflow-hidden relative">
+                  <div className="h-2 w-full bg-zinc-950 rounded-full overflow-hidden relative">
                     {progress === 0 ? (
                       <motion.div 
                         className={`h-full w-1/3 absolute rounded-full ${getPlatformProgressColor()}`}
@@ -1110,15 +1117,15 @@ function App() {
                     )}
                   </div>
 
-                  <div className="flex justify-between items-center text-xs text-zinc-400 font-mono mt-1">
+                  <div className="flex justify-between items-center text-xs md:text-sm text-zinc-400 font-mono mt-1">
                     <div className="flex gap-4">
                       <span className="flex items-center gap-1.5">
-                        <HardDrive size={13} className="text-violet-400"/> 
+                        <HardDrive size={14} className="text-violet-400"/> 
                         {stats.downloaded && stats.size && stats.size !== "0 MB" && stats.size !== "Completado"
                           ? <span className="text-zinc-200 font-semibold">{stats.downloaded} de {stats.size}</span>
                           : (stats.size !== "0 MB" ? stats.size : "Calculando peso...")}
                       </span>
-                      <span className="text-emerald-400 font-medium">{stats.speed}</span>
+                      <span className="text-emerald-400 font-semibold">{stats.speed}</span>
                     </div>
                     <span>ETA: {stats.eta !== "--:--" ? stats.eta : "N/A"}</span>
                   </div>
@@ -1128,11 +1135,11 @@ function App() {
           )}
           </AnimatePresence>
 
-          <div className="flex gap-2.5 w-full">
+          <div className="flex gap-3 w-full">
             <button 
               onClick={handleDownload}
               disabled={downloading}
-              className={`flex-1 py-3.5 md:py-4 rounded-xl font-bold text-base md:text-lg tracking-wide flex items-center justify-center gap-3 transition-all shrink-0 ${
+              className={`flex-1 py-4 md:py-4.5 rounded-2xl font-extrabold text-base md:text-lg tracking-wide flex items-center justify-center gap-3 transition-all shrink-0 shadow-xl ${
                 downloading 
                 ? 'bg-zinc-800 text-zinc-400 cursor-not-allowed' 
                 : `text-white active:scale-[0.99] ${getPlatformColor()}`
@@ -1144,32 +1151,32 @@ function App() {
             {downloading && (
               <button
                 onClick={handleCancelDownload}
-                className="px-5 py-3.5 md:py-4 bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/30 rounded-xl font-bold text-sm md:text-base tracking-wide flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 shadow-lg shrink-0"
+                className="px-6 py-4 md:py-4.5 bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/30 rounded-2xl font-bold text-sm md:text-base tracking-wide flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 shadow-xl shrink-0"
                 title="Cancelar descarga inmediatamente"
               >
-                <X size={18} /> Cancelar
+                <X size={20} /> Cancelar
               </button>
             )}
           </div>
 
-          {/* Playlist Queue Card (Visible when downloading or tracking playlist items) */}
+          {/* Playlist Queue Card (Visible ÚNICAMENTE cuando está activado el modo Playlist) */}
           <AnimatePresence>
-            {playlistQueue.items.length > 0 && (
+            {playlist && playlistQueue.items.length > 0 && (
               <motion.div 
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 10 }}
-                className="bg-zinc-900/90 border border-violet-500/30 rounded-2xl p-4 shadow-xl backdrop-blur-xl flex flex-col gap-3"
+                className="bg-zinc-900/90 border border-violet-500/30 rounded-2xl p-4 md:p-5 shadow-2xl backdrop-blur-xl flex flex-col gap-3.5"
               >
-                <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-violet-600/20 border border-violet-500/30 flex items-center justify-center text-violet-400">
-                      <ListVideo size={18} />
+                <div className="flex items-center justify-between pb-2.5 border-b border-zinc-800">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-violet-600/20 border border-violet-500/30 flex items-center justify-center text-violet-400 shadow-sm">
+                      <ListVideo size={20} />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
+                      <h3 className="text-sm md:text-base font-bold text-zinc-100 flex items-center gap-2">
                         Cola de Descarga de Playlist
-                        <span className="text-[11px] font-mono bg-violet-950 text-violet-300 px-2 py-0.5 rounded-full border border-violet-500/30">
+                        <span className="text-xs font-mono bg-violet-950 text-violet-300 px-2.5 py-0.5 rounded-full border border-violet-500/30 font-semibold">
                           {playlistQueue.currentItem} / {playlistQueue.totalItems} videos
                         </span>
                       </h3>
@@ -1182,14 +1189,14 @@ function App() {
                   </div>
 
                   <div className="text-right">
-                    <span className="text-xs font-mono font-semibold text-violet-400">
+                    <span className="text-xs md:text-sm font-mono font-bold text-violet-400">
                       {Math.round(((Math.max(0, playlistQueue.currentItem - 1) + (progress / 100)) / Math.max(playlistQueue.totalItems, 1)) * 100)}% Global
                     </span>
                   </div>
                 </div>
 
                 {/* Overall playlist progress */}
-                <div className="h-1.5 w-full bg-zinc-950 rounded-full overflow-hidden">
+                <div className="h-2 w-full bg-zinc-950 rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-gradient-to-r from-violet-600 to-fuchsia-500 transition-all duration-300"
                     style={{ width: `${Math.min(100, Math.round(((Math.max(0, playlistQueue.currentItem - 1) + (progress / 100)) / Math.max(playlistQueue.totalItems, 1)) * 100))}%` }}
@@ -1197,11 +1204,11 @@ function App() {
                 </div>
 
                 {/* List of items */}
-                <div className="max-h-48 overflow-y-auto pr-1 flex flex-col gap-1.5 scrollbar-thin">
+                <div className="max-h-72 md:max-h-80 overflow-y-auto pr-1 flex flex-col gap-2 scrollbar-thin">
                   {playlistQueue.items.map((item) => (
                     <div 
                       key={item.index} 
-                      className={`flex items-center justify-between p-2 rounded-xl border text-xs transition-colors ${
+                      className={`flex items-center justify-between p-2.5 rounded-xl border text-xs md:text-sm transition-colors ${
                         item.status === 'downloading'
                           ? 'bg-violet-950/40 border-violet-500/50 text-violet-100 shadow-sm'
                           : item.status === 'completed'
@@ -1210,9 +1217,9 @@ function App() {
                       }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                        <span className={`font-mono text-[11px] font-bold px-1.5 py-0.5 rounded ${
+                        <span className={`font-mono text-xs font-bold px-2 py-0.5 rounded-md ${
                           item.status === 'downloading'
-                            ? 'bg-violet-600 text-white'
+                            ? 'bg-violet-600 text-white shadow-sm'
                             : item.status === 'completed'
                             ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30'
                             : 'bg-zinc-800 text-zinc-400'
@@ -1226,20 +1233,20 @@ function App() {
 
                       <div className="shrink-0 ml-2">
                         {item.status === 'downloading' && (
-                          <div className="flex items-center gap-1.5 bg-violet-600/20 text-violet-300 px-2 py-0.5 rounded-full border border-violet-500/30 font-mono text-[10px]">
-                            <Loader2 size={11} className="animate-spin text-violet-400" />
+                          <div className="flex items-center gap-1.5 bg-violet-600/20 text-violet-300 px-2.5 py-1 rounded-full border border-violet-500/30 font-mono text-xs font-semibold">
+                            <Loader2 size={13} className="animate-spin text-violet-400" />
                             <span>{progress}%</span>
                           </div>
                         )}
                         {item.status === 'completed' && (
-                          <div className="flex items-center gap-1 bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30 text-[10px]">
-                            <CheckCircle2 size={11} />
+                          <div className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 px-2.5 py-1 rounded-full border border-emerald-500/30 text-xs font-semibold">
+                            <CheckCircle2 size={13} />
                             <span>Completado</span>
                           </div>
                         )}
                         {item.status === 'pending' && (
-                          <div className="flex items-center gap-1 bg-zinc-800/60 text-zinc-400 px-2 py-0.5 rounded-full border border-zinc-700/50 text-[10px]">
-                            <Clock size={11} />
+                          <div className="flex items-center gap-1.5 bg-zinc-800/60 text-zinc-400 px-2.5 py-1 rounded-full border border-zinc-700/50 text-xs">
+                            <Clock size={13} />
                             <span>En cola</span>
                           </div>
                         )}
@@ -1252,35 +1259,35 @@ function App() {
           </AnimatePresence>
 
           {/* System Feature Badges (fills empty bottom space gracefully when no playlist queue) */}
-          {playlistQueue.items.length === 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1">
-              <div className="bg-zinc-900/50 border border-zinc-800/70 rounded-xl p-3 flex items-start gap-2.5 hover:border-zinc-700/70 transition-colors">
-                <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0 text-emerald-400 mt-0.5">
-                  <ShieldCheck size={15} />
+          {(!playlist || playlistQueue.items.length === 0) && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-1.5">
+              <div className="bg-zinc-900/50 border border-zinc-800/70 rounded-2xl p-4 flex items-start gap-3 hover:border-zinc-700/70 transition-colors shadow-sm">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0 text-emerald-400 mt-0.5">
+                  <ShieldCheck size={18} />
                 </div>
                 <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-semibold text-zinc-200">Aislamiento Temp Seguro</span>
-                  <span className="text-[11px] text-zinc-400 leading-tight mt-0.5">Fragmentos temporales aislados en AppData local para cero bloqueos en OneDrive.</span>
+                  <span className="text-xs md:text-sm font-semibold text-zinc-200">Aislamiento Temp Seguro</span>
+                  <span className="text-xs text-zinc-400 leading-relaxed mt-0.5">Fragmentos temporales aislados en AppData local para cero bloqueos en OneDrive.</span>
                 </div>
               </div>
 
-              <div className="bg-zinc-900/50 border border-zinc-800/70 rounded-xl p-3 flex items-start gap-2.5 hover:border-zinc-700/70 transition-colors">
-                <div className="w-7 h-7 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center shrink-0 text-violet-400 mt-0.5">
-                  <Zap size={15} />
+              <div className="bg-zinc-900/50 border border-zinc-800/70 rounded-2xl p-4 flex items-start gap-3 hover:border-zinc-700/70 transition-colors shadow-sm">
+                <div className="w-8 h-8 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center shrink-0 text-violet-400 mt-0.5">
+                  <Zap size={18} />
                 </div>
                 <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-semibold text-zinc-200">Aceleración Multihilo</span>
-                  <span className="text-[11px] text-zinc-400 leading-tight mt-0.5">Descarga en paralelo de 4 hilos por fragmento con estabilizador de bitrate.</span>
+                  <span className="text-xs md:text-sm font-semibold text-zinc-200">Aceleración Multihilo</span>
+                  <span className="text-xs text-zinc-400 leading-relaxed mt-0.5">Descarga en paralelo de 4 hilos por fragmento con estabilizador de bitrate.</span>
                 </div>
               </div>
 
-              <div className="bg-zinc-900/50 border border-zinc-800/70 rounded-xl p-3 flex items-start gap-2.5 hover:border-zinc-700/70 transition-colors">
-                <div className="w-7 h-7 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center shrink-0 text-sky-400 mt-0.5">
-                  <Sparkles size={15} />
+              <div className="bg-zinc-900/50 border border-zinc-800/70 rounded-2xl p-4 flex items-start gap-3 hover:border-zinc-700/70 transition-colors shadow-sm">
+                <div className="w-8 h-8 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center shrink-0 text-sky-400 mt-0.5">
+                  <Sparkles size={18} />
                 </div>
                 <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-semibold text-zinc-200">Soporte HLS & 4K UHD</span>
-                  <span className="text-[11px] text-zinc-400 leading-tight mt-0.5">Fusión automática de video + audio con FFmpeg en calidad original sin pérdidas.</span>
+                  <span className="text-xs md:text-sm font-semibold text-zinc-200">Soporte HLS & 4K UHD</span>
+                  <span className="text-xs text-zinc-400 leading-relaxed mt-0.5">Fusión automática de video + audio con FFmpeg en calidad original sin pérdidas.</span>
                 </div>
               </div>
             </div>
